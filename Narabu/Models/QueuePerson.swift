@@ -132,6 +132,8 @@ struct QueuePerson: Equatable, Sendable {
     let type: PersonType
     let persona: String
     let activity: QueueActivity
+    /// どのアクションが効くかを決める様子。
+    let personality: Personality
     let hairStyle: HairStyle
     let skin: Color
     let hair: Color
@@ -229,10 +231,13 @@ enum PersonFactory {
     static func person(atQueueIndex index: Int, scene: SceneKind) -> QueuePerson {
         let type = pickType(index: index, scene: scene)
 
+        let activity = pick(QueueActivity.allCases, index, 0x22B4)
+
         return QueuePerson(
             type: type,
             persona: pick(personas, index, 0x11A3),
-            activity: pick(QueueActivity.allCases, index, 0x22B4),
+            activity: activity,
+            personality: personality(for: activity, index: index),
             hairStyle: pick(HairStyle.allCases, index, 0x33C5),
             skin: skin(for: type, index: index),
             hair: pick(hairColors, index, 0x55E7),
@@ -252,6 +257,7 @@ enum PersonFactory {
         type: .ordinary,
         persona: "あなた",
         activity: .standing,
+        personality: .cheerful,
         hairStyle: .short,
         skin: Color(red: 0.96, green: 0.83, blue: 0.73),
         hair: Color(red: 0.14, green: 0.12, blue: 0.11),
@@ -306,6 +312,28 @@ enum PersonFactory {
         case .alien: Color(red: 0.46, green: 0.70, blue: 0.44)
         case .mascot: pick(topColors, index, 0x7709)
         case .ordinary: pick(bottomColors, index, 0x7709)
+        }
+    }
+
+    // MARK: - 様子
+
+    /// している行動から様子を決める。
+    ///
+    /// 何もしていない人だけは見た目から読めないので、そこだけ幅を持たせる。
+    private static func personality(for activity: QueueActivity, index: Int) -> Personality {
+        switch activity {
+        case .phone: .distracted
+        case .reading: .absorbed
+        case .sleeping: .sleepy
+        case .exercising, .stretching: .cheerful
+        case .music: .cheerful
+        case .walkingDog: .kind
+        case .suitcase: .tourist
+        case .coffee: .chatty
+        case .umbrella: .wary
+        case .shopping: .hurried
+        case .standing:
+            pick([.chatty, .wary, .hurried, .grumpy, .kind, .tourist], index, 0xFF71)
         }
     }
 

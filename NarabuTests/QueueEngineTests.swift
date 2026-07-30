@@ -55,12 +55,25 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
-    /// 画面を見ているあいだも列が動いていないと、止まって見えてしまう。
-    func testQueueAdvancesAboutOncePerFiveSeconds() {
+    /// 自動前進はあくまで補助。速すぎると、遊ぶ前にステージが終わってしまう。
+    func testPassiveAdvanceIsOnlyATrickle() {
         let perHour = QueueEngine.servedCountExact(from: noon, to: noon.addingTimeInterval(3_600))
         let secondsPerPerson = 3_600 / perHour
-        XCTAssertGreaterThan(secondsPerPerson, 2)
-        XCTAssertLessThan(secondsPerPerson, 12)
+        XCTAssertGreaterThan(secondsPerPerson, 40, "自動で進みすぎて操作する意味がなくなる")
+        XCTAssertLessThan(secondsPerPerson, 240, "遅すぎると止まって見える")
+    }
+
+    /// イントロと初回ガチャで数分かかっても、ステージ1が勝手に終わらないこと。
+    func testFirstStageSurvivesTheOpeningSequence() {
+        let openingMinutes = 5.0
+        let progress = QueueEngine.progress(
+            anchorProgress: 0,
+            anchorDate: noon,
+            at: noon.addingTimeInterval(openingMinutes * 60),
+            limit: StageCatalog.stages[0].queueLength
+        )
+        XCTAssertLessThan(progress, StageCatalog.stages[0].queueLength,
+                          "開始前の数分でステージ1がクリアされてしまう")
     }
 
     func testProgressStopsAtTheFrontOfTheStage() {
@@ -88,16 +101,96 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(sizes, [10, 30, 80, 150, 300, 500, 1_000])
     }
 
-    /// 最初のステージがすぐ終わらないと、遊び始めが退屈になる。
-    func testFirstStageClearsWithinMinutes() {
-        let first = StageCatalog.stages[0]
-        let arrival = QueueEngine.estimatedArrival(
-            anchorProgress: 0,
-            anchorDate: noon,
-            limit: first.queueLength
+    // MARK: - アクション
+
+    /// 相手に合った手を選べば進み、間違えれば下がる。当てずっぽうでは進めない。
+    func testActionResultDependsOnThePersonAhead() {
+        let sleepy = PersonFactory.person(atQueueIndex: 7, scene: .shopping)
+        let personality = sleepy.personality
+
+        let best = QueueActions.outcome(
+            action: personality.best,
+            person: sleepy,
+            repeatCount: 0,
+            seed: 1
         )
-        let minutes = arrival.timeIntervalSince(noon) / 60
-        XCTAssertLessThan(minutes, 5, "最初のステージに時間がかかりすぎる")
+        XCTAssertGreaterThan(best.advance, 0, "最適な手なのに進めない")
+
+        let worst = QueueActions.outcome(
+            action: personality.worst,
+            person: sleepy,
+            repeatCount: 0,
+            seed: 1
+        )
+        XCTAssertLessThan(worst.advance, 0, "やってはいけない手なのに罰がない")
+    }
+
+    /// 同じボタンを連打するだけで最適解にならないこと。
+    func testRepeatingTheSameActionStopsWorking() {
+        let person = PersonFactory.person(atQueueIndex: 12, scene: .forest)
+        let action = person.personality.best
+
+        let fresh = (0..<200).filter { seed in
+            QueueActions.outcome(action: action, person: person, repeatCount: 0, seed: seed).advance > 0
+        }.count
+        let tired = (0..<200).filter { seed in
+            QueueActions.outcome(action: action, person: person, repeatCount: 4, seed: seed).advance > 0
+        }.count
+
+        XCTAssertGreaterThan(fresh, tired, "連打しても成功率が落ちていない")
+    }
+
+    func testEveryPersonalityHasADistinctBestAndWorstAction() {
+        for personality in Personality.allCases {
+            XCTAssertNotEqual(personality.best, personality.worst,
+                              "\(personality.label)の最適解と地雷が同じ")
+            XCTAssertFalse(personality.hint.isEmpty, "\(personality.label)に手がかりがない")
+        }
+    }
+
+    // MARK: - ミッション
+
+    /// アイテムが尽きても遊べるよう、ミッションは必ず作れること。
+    func testMissionsAreAlwaysAvailableAndRewarding() {
+        for seed in 0..<200 {
+            let mission = MissionFactory.make(seed: seed, stage: StageCatalog.stages[0])
+            XCTAssertGreaterThan(mission.reward, 0, "達成しても進めないミッションがある")
+            XCTAssertGreaterThan(mission.coins, 0)
+            XCTAssertFalse(mission.instruction.isEmpty)
+        }
+    }
+
+    func testAllMissionKindsCanAppear() {
+        var seenMash = false
+        var seenTiming = false
+        var seenQuiz = false
+        var seenMemory = false
+        var seenSequence = false
+
+        for seed in 0..<300 {
+            switch MissionFactory.make(seed: seed, stage: StageCatalog.stages[3]).kind {
+            case .mash: seenMash = true
+            case .timing: seenTiming = true
+            case .quiz: seenQuiz = true
+            case .memory: seenMemory = true
+            case .sequence: seenSequence = true
+            }
+        }
+
+        XCTAssertTrue(seenMash && seenTiming && seenQuiz && seenMemory && seenSequence,
+                      "出てこないミッションの種類がある")
+    }
+
+    func testQuizAnswersPointToRealChoices() {
+        for seed in 0..<300 {
+            let mission = MissionFactory.make(seed: seed, stage: StageCatalog.stages[0])
+            if case .quiz(_, let choices, let answer, _) = mission.kind {
+                XCTAssertTrue(choices.indices.contains(answer), "正解の番号が選択肢の外にある")
+            }
+            if case .memory(_, let choices, let answer) = mission.kind {
+                XCTAssertTrue(choices.indices.contains(answer), "正解の番号が選択肢の外にある")
+            }
+        }
     }
 
     func testEveryStageHasAtLeastOneScene() {

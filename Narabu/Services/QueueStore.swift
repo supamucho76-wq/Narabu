@@ -290,25 +290,91 @@ final class QueueStore {
 
     // MARK: - 前の人への働きかけ
 
+    /// 直前に押したアクションと、その連続回数。同じ手ばかりだと通じなくなる。
+    private(set) var lastAction: QueueAction?
+    private(set) var repeatCount = 0
+    /// 連続で成功している回数。
+    private(set) var combo = 0
+
+    /// コンボによる追加の前進。
+    var comboBonus: Int { combo >= 5 ? 1 : 0 }
+
+    /// 一定のコンボから、しばらく前進が倍になる。
+    var isFever: Bool { combo >= 10 }
+
     func interactWithPersonAhead(_ action: QueueAction) -> ActionOutcome {
         guard !hasClearedStage else {
-            return ActionOutcome(message: "もう先頭なので、絡む相手がいない。", didAdvance: false)
+            return ActionOutcome(
+                grade: .miss,
+                message: "もう先頭なので、絡む相手がいない。",
+                advance: 0
+            )
         }
 
+        let person = personAhead
         state.totalInteractions += 1
-        let outcome = QueueActions.outcome(
+        repeatCount = (action == lastAction) ? repeatCount + 1 : 0
+        lastAction = action
+
+        var outcome = QueueActions.outcome(
             action: action,
-            totalInteractions: state.totalInteractions,
+            person: person,
+            repeatCount: repeatCount,
             seed: state.totalInteractions &* 31 &+ remaining,
-            successBonus: effects.eventSuccessBonus
+            successBonus: effects.eventSuccessBonus,
+            comboBonus: comboBonus
         )
 
-        if outcome.didAdvance {
-            moveAnchor(to: min(stage.queueLength, progress + 1))
+        if isFever, outcome.advance > 0 {
+            outcome = ActionOutcome(
+                grade: outcome.grade,
+                message: outcome.message,
+                advance: outcome.advance * 2
+            )
+        }
+
+        combo = outcome.keepsCombo ? combo + 1 : 0
+
+        if outcome.advance != 0 {
+            moveAnchor(to: min(stage.queueLength, max(0, progress + outcome.advance)))
+        }
+        if outcome.grade == .great {
+            state.coins += 3
         }
         save()
 
         return outcome
+    }
+
+    // MARK: - ミッション
+
+    /// いま挑戦できるミッション。常にひとつある。
+    private(set) var currentMission: Mission?
+
+    /// 手持ちのミッションがなければ用意する。
+    func ensureMission() {
+        guard currentMission == nil else { return }
+        currentMission = MissionFactory.make(
+            seed: state.totalInteractions &* 7 &+ state.stageNumber &* 101 &+ Int(now.timeIntervalSince1970) / 17,
+            stage: stage
+        )
+    }
+
+    /// ミッションの結果を反映して、次のミッションを用意する。
+    func completeMission(_ mission: Mission, success: Bool) {
+        let advance = success ? mission.reward : mission.consolationReward
+        let coins = success ? mission.coins : mission.consolationCoins
+
+        state.coins += coins
+        combo = success ? combo + 1 : 0
+
+        if advance > 0 {
+            moveAnchor(to: min(stage.queueLength, progress + advance))
+        }
+
+        currentMission = nil
+        save()
+        ensureMission()
     }
 
     /// 課金して前の人を追い抜く。

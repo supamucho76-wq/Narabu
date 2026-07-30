@@ -294,43 +294,30 @@ struct QueueWorldView: View {
         }
     }
 
-    /// 頭のすぐ上に矢印とラベルを重ねる。少し浮き沈みさせて目に留まるようにする。
+    /// 頭のすぐ上に小さな矢印だけを置く。
+    ///
+    /// 大きなラベルは前の人や吹き出しを隠してしまうので、印は控えめにして、
+    /// 足元の光の輪と合わせて自分だとわかるようにする。
     private func drawPlayerLabel(
         in context: GraphicsContext,
         feet: CGPoint,
         height: Double,
         time: Double
     ) {
-        let markerSize = height * 0.1
-        let bob = sin(time * 2.4) * markerSize * 0.16
-        // 頭のてっぺんのすぐ上。離れると自分がどれか分からなくなる。
-        let tipY = feet.y - height - markerSize * 0.25 + bob
+        let markerSize = height * 0.062
+        let bob = sin(time * 2.4) * markerSize * 0.3
+        let tipY = feet.y - height - markerSize * 0.5 + bob
         let marker = Color(red: 1.0, green: 0.84, blue: 0.28)
 
         var arrow = Path()
-        arrow.move(to: CGPoint(x: feet.x - markerSize * 0.62, y: tipY - markerSize))
-        arrow.addLine(to: CGPoint(x: feet.x + markerSize * 0.62, y: tipY - markerSize))
+        arrow.move(to: CGPoint(x: feet.x - markerSize, y: tipY - markerSize * 1.5))
+        arrow.addLine(to: CGPoint(x: feet.x + markerSize, y: tipY - markerSize * 1.5))
         arrow.addLine(to: CGPoint(x: feet.x, y: tipY))
         arrow.closeSubpath()
-        context.fill(arrow, with: .color(marker))
 
-        let label = context.resolve(
-            Text("あなた")
-                .font(.system(size: max(10, markerSize * 0.9), weight: .heavy))
-                .foregroundColor(Color(red: 0.16, green: 0.12, blue: 0.06))
-        )
-        let measured = label.measure(in: CGSize(width: 200, height: 60))
-        let plate = CGRect(
-            x: feet.x - measured.width / 2 - 7,
-            y: tipY - markerSize - measured.height - 6,
-            width: measured.width + 14,
-            height: measured.height + 4
-        )
-        context.fill(
-            Path(roundedRect: plate, cornerRadius: plate.height * 0.35),
-            with: .color(marker)
-        )
-        context.draw(label, at: CGPoint(x: plate.midX, y: plate.midY))
+        // 背景が明るいところでも見えるように、細く縁取る。
+        context.stroke(arrow, with: .color(.black.opacity(0.35)), lineWidth: 2)
+        context.fill(arrow, with: .color(marker))
     }
 
     // MARK: - 前の人の吹き出し
@@ -354,8 +341,10 @@ struct QueueWorldView: View {
         let padding = fontSize * 0.7
         let bubbleWidth = textSize.width + padding * 2
         let bubbleHeight = textSize.height + padding * 1.4
-        let centerX = min(max(feet.x, bubbleWidth / 2 + 8), size.width - bubbleWidth / 2 - 8)
-        let bottomY = feet.y - height * 1.08
+        // 人物の真上ではなく斜め上にずらして、顔と自分の印に重ならないようにする。
+        let preferredX = feet.x + bubbleWidth * 0.4
+        let centerX = min(max(preferredX, bubbleWidth / 2 + 8), size.width - bubbleWidth / 2 - 8)
+        let bottomY = feet.y - height * 1.02
 
         let bubble = CGRect(
             x: centerX - bubbleWidth / 2,

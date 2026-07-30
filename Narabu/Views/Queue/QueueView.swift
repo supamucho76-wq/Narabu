@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 /// 並んでいるあいだ、ずっと表示されている画面。
-/// 画面のほとんどは列そのもので、数字は控えめに重ねるだけ。
+///
+/// 上から順に、残り人数 → ミッション → コンボ → 人物 → アクション、の優先度で置く。
 struct QueueView: View {
     @Environment(QueueStore.self) private var store
     @Environment(PurchaseStore.self) private var purchases
@@ -10,16 +11,16 @@ struct QueueView: View {
     @State private var isShowingCollection = false
     @State private var isShowingItems = false
     @State private var isShowingLoadout = false
-    @State private var reaction: String?
+    @State private var reaction: ActionOutcome?
     @State private var reactionToken = 0
     @State private var disturbance: Double = 0
     @State private var overtake: OvertakeRun?
     @State private var gachaMode: GachaView.Mode?
     @State private var clearResult: StageClearResult?
+    @State private var activeMission: Mission?
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
-    /// 演出中はボタンを受け付けない。
-    private var isBusy: Bool { overtake != nil }
+    private var isBusy: Bool { overtake != nil || activeMission != nil }
 
     var body: some View {
         ZStack {
@@ -29,31 +30,39 @@ struct QueueView: View {
                 topBar
                 Spacer(minLength: 0)
                 reactionToast
-                personAheadCaption
+                personCard
+                missionCard
                 actionRow
                 bottomBar
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
-            .opacity(isBusy ? 0.25 : 1)
+            .opacity(overtake == nil ? 1 : 0.2)
             .allowsHitTesting(!isBusy)
             .animation(.easeInOut(duration: 0.2), value: isBusy)
+
+            if let mission = activeMission {
+                MissionView(mission: mission) { success in
+                    store.completeMission(mission, success: success)
+                    activeMission = nil
+                }
+                .transition(.opacity)
+            }
 
             if !hasSeenIntro {
                 IntroView { hasSeenIntro = true }
                     .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: activeMission)
         .animation(.easeInOut(duration: 0.4), value: hasSeenIntro)
         .onChange(of: store.scene) { _, scene in
-            show(reaction: "\(scene.name)まで来た。")
+            show(.init(grade: .good, message: "\(scene.name)まで来た。", advance: 0))
         }
         .onChange(of: hasSeenIntro) { _, seen in
             if seen, store.needsStarterGacha { gachaMode = .starter }
         }
-        .sheet(isPresented: $isShowingCollection) {
-            CollectionView()
-        }
+        .sheet(isPresented: $isShowingCollection) { CollectionView() }
         .sheet(isPresented: $isShowingItems) {
             ItemSheet(
                 onUse: { item in use(item) },
@@ -61,15 +70,9 @@ struct QueueView: View {
             )
             .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $isShowingLoadout) {
-            LoadoutView()
-        }
+        .sheet(isPresented: $isShowingLoadout) { LoadoutView() }
         .fullScreenCover(item: $gachaMode) { mode in
-            GachaView(
-                mode: mode,
-                onDraw: { draw(mode) },
-                onFinish: { gachaMode = nil }
-            )
+            GachaView(mode: mode, onDraw: { draw(mode) }, onFinish: { gachaMode = nil })
         }
         .fullScreenCover(item: $clearResult) { result in
             StageClearView(
@@ -80,6 +83,7 @@ struct QueueView: View {
         }
         .task {
             store.startTicking()
+            store.ensureMission()
             await NotificationScheduler.requestAuthorization()
             await rescheduleNotifications()
             if hasSeenIntro, store.needsStarterGacha { gachaMode = .starter }
@@ -95,33 +99,28 @@ struct QueueView: View {
             anchorDate: store.state.anchorDate,
             disturbance: disturbance,
             overtake: overtake,
-            onTapPersonAhead: { if !isBusy { perform(.tapShoulder) } }
+            onTapPersonAhead: {}
         )
         .ignoresSafeArea()
     }
 
-    // MARK: - 上部
+    // MARK: - 1. 残り人数
 
     private var topBar: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 4) {
             HStack(spacing: 8) {
                 Text("STAGE \(store.state.stageNumber)")
                     .font(.system(size: 10, weight: .black))
-                    .tracking(1)
                 Text(store.stage.name)
                     .font(.caption2.weight(.bold))
                 Spacer()
-                if store.state.lap > 1 {
-                    Text("\(store.state.lap)周目")
-                }
-                Text(store.scene.name)
+                gachaCorner
             }
-            .font(.caption2.weight(.semibold))
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text("あと")
                 Text(store.remaining, format: .number)
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .font(.system(size: 46, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
                     .animation(.snappy, value: store.remaining)
@@ -130,97 +129,210 @@ struct QueueView: View {
             .font(.caption.weight(.medium))
 
             progressBar
+
+            if store.combo >= 3 {
+                comboBadge
+            }
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.6), radius: 5, y: 1)
-        .padding(.top, 4)
+        .shadow(color: .black.opacity(0.65), radius: 5, y: 1)
+        .padding(.top, 2)
     }
 
+    /// 残り人数が減るほど、バーはゴール側へ伸びる。
     private var progressBar: some View {
         GeometryReader { geometry in
             let ratio = Double(store.progress) / Double(max(1, store.stage.queueLength))
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.28))
+                Capsule().fill(.white.opacity(0.25))
                 Capsule()
-                    .fill(AppTheme.stamp)
-                    .frame(width: max(2, geometry.size.width * ratio))
+                    .fill(store.isFever ? Color(red: 1.0, green: 0.72, blue: 0.2) : AppTheme.stamp)
+                    .frame(width: max(2, geometry.size.width * min(1, max(0, ratio))))
+                    .animation(.easeOut(duration: 0.4), value: ratio)
             }
         }
-        .frame(height: 3)
-        .padding(.horizontal, 2)
+        .frame(height: 4)
     }
 
-    // MARK: - 反応と前の人
+    /// ガチャの残り時間は隅に小さく。引ける時だけ色がつく。
+    @ViewBuilder
+    private var gachaCorner: some View {
+        if store.canDrawFreeGacha {
+            Button { gachaMode = .free } label: {
+                Label("ガチャ", systemImage: "gift.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppTheme.stamp)
+                    .clipShape(Capsule())
+            }
+        } else if store.canDrawWithTicket {
+            Button { gachaMode = .ticket } label: {
+                Label("\(store.state.gachaTickets)", systemImage: "ticket.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 0.30, green: 0.48, blue: 0.72))
+                    .clipShape(Capsule())
+            }
+        } else if let cooldown = store.freeGachaCooldown {
+            Label(GachaMachine.countdownLabel(cooldown), systemImage: "clock")
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .opacity(0.75)
+        }
+    }
+
+    // MARK: - 3. コンボ
+
+    private var comboBadge: some View {
+        HStack(spacing: 5) {
+            Image(systemName: store.isFever ? "flame.fill" : "bolt.fill")
+            Text(store.isFever ? "フィーバー！ \(store.combo)連続" : "\(store.combo)連続")
+        }
+        .font(.system(size: 11, weight: .black))
+        .foregroundStyle(store.isFever ? Color(red: 1.0, green: 0.78, blue: 0.24) : .white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .background(.black.opacity(0.35))
+        .clipShape(Capsule())
+        .transition(.scale.combined(with: .opacity))
+        .animation(.snappy, value: store.combo)
+    }
+
+    // MARK: - 反応
 
     private var reactionToast: some View {
         Group {
             if let reaction {
-                Text(reaction)
-                    .font(.footnote.weight(.medium))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(AppTheme.paper.opacity(0.95))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .foregroundStyle(AppTheme.ink)
-                    .transition(.opacity)
+                HStack(spacing: 8) {
+                    if reaction.advance != 0 {
+                        Text(reaction.advance > 0 ? "+\(reaction.advance)人" : "\(reaction.advance)人")
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(reaction.advance > 0 ? AppTheme.stamp : .secondary)
+                    }
+                    Text(reaction.message)
+                        .font(.caption)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(AppTheme.paper.opacity(0.96))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .foregroundStyle(AppTheme.ink)
+                .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.22), value: reaction)
-        .padding(.bottom, 10)
+        .animation(.easeInOut(duration: 0.2), value: reaction)
+        .padding(.bottom, 8)
     }
 
-    private var personAheadCaption: some View {
-        Text("前の人：\(store.personAhead.descriptor)")
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.6), radius: 4, y: 1)
-            .padding(.bottom, 8)
+    // MARK: - 4. 人物
+
+    /// 前の人の様子。ここを読めば、どのアクションが効くか分かる。
+    private var personCard: some View {
+        let person = store.personAhead
+
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text("前の人")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(.secondary)
+                Text(person.descriptor)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(person.personality.label)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AppTheme.stamp)
+            }
+            Text(person.personality.hint)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(AppTheme.paper.opacity(0.94))
+        .foregroundStyle(AppTheme.ink)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.bottom, 6)
     }
 
-    // MARK: - アクション
+    // MARK: - 2. ミッション
+
+    @ViewBuilder
+    private var missionCard: some View {
+        if let mission = store.currentMission, !store.hasClearedStage {
+            Button {
+                activeMission = mission
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "target")
+                        .font(.system(size: 14))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(mission.title)
+                            .font(.caption.weight(.bold))
+                        Text(mission.instruction)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text("+\(mission.reward)人")
+                        .font(.caption.weight(.black))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(red: 1.0, green: 0.88, blue: 0.52))
+                .foregroundStyle(AppTheme.ink)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .padding(.bottom, 6)
+        }
+    }
+
+    // MARK: - 5. アクション
 
     private var actionRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ForEach(QueueAction.allCases) { action in
                 Button {
                     perform(action)
                 } label: {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 2) {
                         Image(systemName: action.symbolName)
-                            .font(.system(size: 15))
+                            .font(.system(size: 13))
                         Text(action.label)
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: 8, weight: .medium))
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(AppTheme.paper.opacity(0.92))
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background(AppTheme.paper.opacity(0.94))
                     .foregroundStyle(AppTheme.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
                 .disabled(store.hasClearedStage)
             }
         }
-        .padding(.bottom, 8)
     }
 
-    // MARK: - 下部
+    // MARK: - 6. その他
 
     private var bottomBar: some View {
         VStack(spacing: 6) {
             if store.hasClearedStage {
                 Button("先頭に着いた！　クリア") { clearStage() }
                     .buttonStyle(QuietButtonStyle(emphasized: true))
-            } else {
-                gachaButton
             }
 
             HStack(spacing: 6) {
                 Button {
                     isShowingItems = true
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3) {
                         Image(systemName: "shippingbox.fill")
                         Text("アイテム")
                         if store.ownedItems.isEmpty == false {
@@ -230,9 +342,7 @@ struct QueueView: View {
                 }
                 .buttonStyle(QuietButtonStyle())
 
-                Button {
-                    isShowingLoadout = true
-                } label: {
+                Button { isShowingLoadout = true } label: {
                     Label("装備", systemImage: "person.crop.circle.badge.checkmark")
                 }
                 .buttonStyle(QuietButtonStyle())
@@ -241,43 +351,18 @@ struct QueueView: View {
                     .buttonStyle(QuietButtonStyle())
             }
         }
+        // アクションボタンとの誤タップを防ぐ余白。
+        .padding(.top, 14)
     }
 
     private func countBadge(_ count: Int) -> some View {
         Text("\(count)")
-            .font(.caption2.weight(.bold))
+            .font(.system(size: 9, weight: .bold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(AppTheme.stamp)
             .clipShape(Capsule())
-    }
-
-    /// 引ける時だけ目立たせ、それ以外は残り時間を静かに出す。
-    @ViewBuilder
-    private var gachaButton: some View {
-        if store.canDrawFreeGacha {
-            Button { gachaMode = .free } label: {
-                Label("無料ガチャが引けます！", systemImage: "gift.fill")
-            }
-            .buttonStyle(QuietButtonStyle(emphasized: true))
-        } else if store.canDrawWithTicket {
-            Button { gachaMode = .ticket } label: {
-                Label("チケットで引く（\(store.state.gachaTickets)枚）", systemImage: "ticket.fill")
-            }
-            .buttonStyle(QuietButtonStyle(emphasized: true))
-        } else if let cooldown = store.freeGachaCooldown {
-            HStack(spacing: 6) {
-                Image(systemName: "clock")
-                Text("次の無料ガチャまで \(GachaMachine.countdownLabel(cooldown))")
-                    .monospacedDigit()
-            }
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .background(.black.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        }
     }
 
     // MARK: - 動作
@@ -294,23 +379,23 @@ struct QueueView: View {
         guard !isBusy else { return }
 
         let outcome = store.interactWithPersonAhead(action)
-        show(reaction: outcome.message)
+        show(outcome)
 
-        UIImpactFeedbackGenerator(style: outcome.didAdvance ? .heavy : .light)
-            .impactOccurred()
+        switch outcome.grade {
+        case .great:
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        case .good:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .miss:
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        case .backfire:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
 
         withAnimation(.easeOut(duration: 0.12)) { disturbance = 1 }
         withAnimation(.easeIn(duration: 0.45).delay(0.12)) { disturbance = 0 }
-
-        if outcome.didAdvance {
-            Task { await rescheduleNotifications() }
-        }
     }
 
-    /// アイテムを使ってごぼう抜きする。
-    ///
-    /// 順位は先に確定させ、画面だけが演出の時間をかけて追いつく。
-    /// こうしておくと、途中でアプリを閉じてもアイテムが消えたままにならない。
     private func use(_ item: GachaItem) {
         guard !isBusy else { return }
 
@@ -321,7 +406,6 @@ struct QueueView: View {
         runOvertake(item: item, from: before, skipped: skipped)
     }
 
-    /// 課金して進む。演出は車と同じものを使う。
     private func purchaseSkip() async {
         guard !isBusy, await purchases.purchaseSkip() else { return }
 
@@ -343,7 +427,6 @@ struct QueueView: View {
             startedAt: .now
         )
         overtake = run
-
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
 
         Task {
@@ -356,18 +439,18 @@ struct QueueView: View {
     private func clearStage() {
         guard let result = store.clearStage() else { return }
         clearResult = result
+        store.ensureMission()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         Task { await rescheduleNotifications() }
     }
 
-    /// 少しのあいだだけ反応を表示する。連続で押されても最後のものだけが残る。
-    private func show(reaction message: String) {
-        reaction = message
+    private func show(_ outcome: ActionOutcome) {
+        reaction = outcome
         reactionToken += 1
         let token = reactionToken
 
         Task {
-            try? await Task.sleep(for: .seconds(2.5))
+            try? await Task.sleep(for: .seconds(2.2))
             if token == reactionToken { reaction = nil }
         }
     }
