@@ -45,10 +45,6 @@ final class QueueStore {
         NeighborGenerator.neighbor(at: position, offset: -1, lap: state.lap)
     }
 
-    var personBehind: Neighbor {
-        NeighborGenerator.neighbor(at: position, offset: 1, lap: state.lap)
-    }
-
     /// これまでに割り込まれた合計人数。基準時刻をまたいでも積み上がる。
     var totalCutIns: Int {
         state.totalCutIns + QueueEngine.cutInCount(from: state.anchorDate, to: now)
@@ -90,6 +86,26 @@ final class QueueStore {
         save()
 
         return record
+    }
+
+    /// 前の人を叩く。ごくまれに相手が列を抜けて、1人ぶん進む。
+    func tapPersonAhead() -> TapOutcome {
+        guard !hasReachedFront else {
+            return TapOutcome(message: "窓口の人を叩くのはやめておいた。", didAdvance: false)
+        }
+
+        state.totalTaps += 1
+        let outcome = TapReactions.outcome(
+            totalTaps: state.totalTaps,
+            seed: state.totalTaps &* 31 &+ position
+        )
+
+        if outcome.didAdvance {
+            moveAnchor(to: max(0, position - 1))
+        }
+        save()
+
+        return outcome
     }
 
     /// 課金して前の人を追い抜く。

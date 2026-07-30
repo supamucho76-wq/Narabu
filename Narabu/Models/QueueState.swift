@@ -16,6 +16,8 @@ struct QueueState: Codable, Equatable {
     var totalCutIns: Int
     /// これまでに追い抜いた合計人数。
     var totalSkipped: Int
+    /// 前の人を叩いた合計回数。反応の悪化の度合いに使う。
+    var totalTaps: Int = 0
     /// 次に発行する整理券の通し番号。
     var nextTicketNumber: Int
     /// 受け取った景品。
@@ -31,6 +33,7 @@ struct QueueState: Codable, Equatable {
             lap: 1,
             totalCutIns: 0,
             totalSkipped: 0,
+            totalTaps: 0,
             nextTicketNumber: 1,
             collected: []
         )

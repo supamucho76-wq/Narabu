@@ -16,49 +16,49 @@ struct QueueScenery: Equatable, Sendable {
 
     static let stages: [QueueScenery] = [
         QueueScenery(
-            fromPosition: 6_000,
+            fromPosition: 180_000,
             title: "見わたすかぎりの背中",
             description: "前にも後ろにも人が続いている。列の先がどこへ向かっているのかは見えない。",
             skyTone: 1.0,
             isSheltered: false
         ),
         QueueScenery(
-            fromPosition: 4_000,
+            fromPosition: 120_000,
             title: "遠くの影",
             description: "ずっと先に、建物のようなものの影がある。まだ形はわからない。",
             skyTone: 0.96,
             isSheltered: false
         ),
         QueueScenery(
-            fromPosition: 2_500,
+            fromPosition: 70_000,
             title: "建物の輪郭",
             description: "灰色の低い建物が見えてきた。窓はなく、入口らしきものが一つだけある。",
             skyTone: 0.9,
             isSheltered: false
         ),
         QueueScenery(
-            fromPosition: 1_200,
+            fromPosition: 35_000,
             title: "敷地の中",
             description: "白線で仕切られた通路に入った。等間隔にポールが立っている。",
             skyTone: 0.84,
             isSheltered: false
         ),
         QueueScenery(
-            fromPosition: 500,
+            fromPosition: 12_000,
             title: "屋根の下",
             description: "屋根に入った。雨の音が遠くなり、蛍光灯の音が聞こえる。",
             skyTone: 0.62,
             isSheltered: true
         ),
         QueueScenery(
-            fromPosition: 150,
+            fromPosition: 3_000,
             title: "窓口の明かり",
             description: "廊下の先に、明かりのついた窓口が見える。人が一人で座っている。",
             skyTone: 0.5,
             isSheltered: true
         ),
         QueueScenery(
-            fromPosition: 30,
+            fromPosition: 400,
             title: "声の届く距離",
             description: "窓口の人が何か話しているのが聞こえる。内容までは聞き取れない。",
             skyTone: 0.42,

@@ -48,17 +48,36 @@ final class QueueEngineTests: XCTestCase {
 
     func testReachesFrontInRoughlyTwoWeeks() {
         let start = QueueEngine.newTailPosition(seed: 42)
-        XCTAssertGreaterThanOrEqual(start, 7_000)
-        XCTAssertLessThanOrEqual(start, 9_500)
+        XCTAssertGreaterThanOrEqual(start, 200_000)
+        XCTAssertLessThanOrEqual(start, 260_000)
 
         let arrival = QueueEngine.estimatedArrival(anchorPosition: start, anchorDate: noon)
         let days = arrival.timeIntervalSince(noon) / 86_400
-        XCTAssertGreaterThan(days, 10, "早すぎると並んだ実感がない")
-        XCTAssertLessThan(days, 35, "遅すぎると忘れられる")
+        XCTAssertGreaterThan(days, 8, "早すぎると並んだ実感がない")
+        XCTAssertLessThan(days, 28, "遅すぎると忘れられる")
+    }
+
+    /// 画面を見ているあいだも数字が動いていないと、止まって見えてしまう。
+    func testQueueAdvancesAboutOncePerFiveSeconds() {
+        let perHour = QueueEngine.servedCountExact(from: noon, to: noon.addingTimeInterval(3_600))
+        let secondsPerPerson = 3_600 / perHour
+        XCTAssertGreaterThan(secondsPerPerson, 2)
+        XCTAssertLessThan(secondsPerPerson, 12)
+    }
+
+    func testAdvanceFractionStaysBetweenZeroAndOne() {
+        for seconds in stride(from: 0, through: 600, by: 7) {
+            let fraction = QueueEngine.advanceFraction(
+                anchorDate: noon,
+                at: noon.addingTimeInterval(Double(seconds))
+            )
+            XCTAssertGreaterThanOrEqual(fraction, 0)
+            XCTAssertLessThan(fraction, 1)
+        }
     }
 
     func testSceneryGetsDarkerCloserToTheFront() {
-        let far = QueueScenery.current(for: 8_000)
+        let far = QueueScenery.current(for: 230_000)
         let near = QueueScenery.current(for: 10)
         XCTAssertGreaterThan(far.skyTone, near.skyTone)
         XCTAssertTrue(near.isSheltered)
@@ -66,9 +85,25 @@ final class QueueEngineTests: XCTestCase {
     }
 
     func testSceneryCoversEveryPositionDownToZero() {
-        for position in [0, 1, 29, 30, 149, 500, 1_199, 6_000, 99_999] {
+        for position in [0, 1, 399, 400, 2_999, 12_000, 34_999, 180_000, 999_999] {
             XCTAssertNotNil(QueueScenery.stages.first { position >= $0.fromPosition })
         }
+    }
+
+    func testTappingSometimesMakesThePersonAheadLeave() {
+        let departures = (0..<2_000).filter { seed in
+            TapReactions.outcome(totalTaps: seed, seed: seed).didAdvance
+        }.count
+        XCTAssertGreaterThan(departures, 0, "まったく列を抜けないと叩く意味がない")
+        XCTAssertLessThan(departures, 200, "簡単に抜けすぎると並ぶ意味がなくなる")
+    }
+
+    func testTapReactionsGetColderAsTapsPileUp() {
+        let differing = (0..<200).filter { seed in
+            TapReactions.outcome(totalTaps: 1, seed: seed).message
+                != TapReactions.outcome(totalTaps: 500, seed: seed).message
+        }.count
+        XCTAssertGreaterThan(differing, 150, "叩いた回数で反応が変わっていない")
     }
 
     func testPrizeForLapCannotBeRerolled() {

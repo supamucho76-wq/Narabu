@@ -5,27 +5,37 @@ import Foundation
 /// アプリを閉じている間も列は進むため、進捗は保存せず常に基準時刻から逆算する。
 /// 同じ引数には必ず同じ結果を返すので、未来の位置を先読みして通知を予約することもできる。
 enum QueueEngine {
-    /// 時間帯ごとの1時間あたりの処理人数。深夜は係の人が寝ているのでほとんど進まない。
+    /// 時間帯ごとの1時間あたりの処理人数。
+    ///
+    /// 昼はおよそ4秒に1人、深夜でも10秒に1人は進む。
+    /// 完全に止めてしまうと画面が固まったように見えるので、夜も動かし続ける。
     private static let hourlyRate: [Double] = [
-        2, 2, 2, 2, 2, 2,       // 0時-5時
-        15, 15, 15,             // 6時-8時
-        35, 35, 35,             // 9時-11時
-        20, 20,                 // 12時-13時（窓口も昼休み）
-        35, 35, 35, 35,         // 14時-17時
-        25, 25, 25, 25,         // 18時-21時
-        10, 10                  // 22時-23時
+        300, 300, 300, 300, 300, 300,   // 0時-5時
+        650, 650, 650,                  // 6時-8時
+        1_000, 1_000, 1_000,            // 9時-11時
+        700, 700,                       // 12時-13時（窓口も昼休み）
+        1_000, 1_000, 1_000, 1_000,     // 14時-17時
+        800, 800, 800, 800,             // 18時-21時
+        500, 500                        // 22時-23時
     ]
 
     /// 1時間あたりに割り込みが発生する確率。
     private static let cutInProbability = 0.03
 
     /// 最後尾に並び直すときの人数。
+    ///
+    /// 1日16,000人ほど進むので、この人数だと先頭まで2週間ほどかかる。
     static func newTailPosition(seed: Int) -> Int {
-        7_000 + Int(unitRandom(seed, salt: 0x7A11) * 2_500)
+        200_000 + Int(unitRandom(seed, salt: 0x7A11) * 60_000)
     }
 
     /// start から end までに窓口が処理した人数。
     static func servedCount(from start: Date, to end: Date) -> Int {
+        Int(servedCountExact(from: start, to: end))
+    }
+
+    /// 端数を含む処理人数。人の列を滑らかに動かすために使う。
+    static func servedCountExact(from start: Date, to end: Date) -> Double {
         guard end > start else { return 0 }
 
         var total = 0.0
@@ -33,7 +43,13 @@ enum QueueEngine {
             let rate = hourlyRate[hourOfDay(hourIndex)] * jitter(hourIndex, salt: 0x514E)
             total += rate * seconds / 3600
         }
-        return Int(total)
+        return total
+    }
+
+    /// 次の1人が進むまでの進捗。0 から 1 の間を繰り返す。
+    static func advanceFraction(anchorDate: Date, at date: Date) -> Double {
+        let exact = servedCountExact(from: anchorDate, to: date)
+        return exact - exact.rounded(.down)
     }
 
     /// start から end までに、課金して割り込んできた人数。
