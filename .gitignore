@@ -1,0 +1,30 @@
+## Xcode
+build/
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+!*.xcodeproj/project.pbxproj
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcarchive
+*.xcresult
+
+## Swift Package Manager
+.build/
+.swiftpm/
+
+## macOS
+.DS_Store
+
+## ビルド成果物・ログ
+xcodebuild*.log
+screenshots/
+build-artifacts/

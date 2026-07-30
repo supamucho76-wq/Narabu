@@ -1,0 +1,150 @@
+workflows:
+  ios-validate:
+    name: iOS Validate (unsigned)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate Xcode project
+        script: |
+          cd "$CM_BUILD_DIR"
+          xcodegen generate
+
+      - name: Build for iOS Simulator
+        script: |
+          cd "$CM_BUILD_DIR"
+          set -o pipefail
+          xcodebuild \
+            -project Narabu.xcodeproj \
+            -scheme Narabu \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build \
+            | tee xcodebuild.log
+
+      - name: Run unit tests
+        script: |
+          cd "$CM_BUILD_DIR"
+          set -euo pipefail
+
+          DEVICE_UDID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          if [ -z "$DEVICE_UDID" ]; then
+            echo "No available iPhone Simulator was found."
+            exit 1
+          fi
+          echo "DEVICE_UDID=$DEVICE_UDID" >> "$CM_ENV"
+
+          xcodebuild \
+            -project Narabu.xcodeproj \
+            -scheme Narabu \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE_UDID" \
+            -resultBundlePath "$CM_BUILD_DIR/TestResults.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            test \
+            | tee xcodebuild-tests.log
+
+      - name: Launch app and capture screenshot
+        script: |
+          cd "$CM_BUILD_DIR"
+          set -euo pipefail
+          mkdir -p screenshots
+
+          APP_PATH="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+            -type d \
+            -path '*/Build/Products/Debug-iphonesimulator/*.app' \
+            ! -path '*PackageFrameworks*' \
+            -print \
+            | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "The built .app bundle was not found."
+            exit 1
+          fi
+
+          xcrun simctl boot "$DEVICE_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVICE_UDID" -b
+
+          xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
+          xcrun simctl launch "$DEVICE_UDID" io.github.supamucho76wq.narabu
+          sleep 4
+          xcrun simctl io "$DEVICE_UDID" screenshot "$CM_BUILD_DIR/screenshots/launch.png"
+
+    artifacts:
+      - xcodebuild.log
+      - xcodebuild-tests.log
+      - screenshots/*.png
+      - TestResults.xcresult
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/Products/**/*.app
+
+  ios-testflight:
+    name: iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: codemagic_api_key
+    environment:
+      groups:
+        - code-signing
+      xcode: latest
+      vars:
+        BUNDLE_ID: io.github.supamucho76wq.narabu
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Set build number
+        script: |
+          cd "$CM_BUILD_DIR"
+          BUILD_NUMBER=$(date +%Y%m%d%H%M)
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
+
+      - name: Generate Xcode project
+        script: |
+          cd "$CM_BUILD_DIR"
+          xcodegen generate
+
+      - name: Initialize keychain
+        script: keychain initialize
+
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: Add certificate to keychain
+        script: keychain add-certificates
+
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+
+      - name: Build ipa for TestFlight
+        script: |
+          cd "$CM_BUILD_DIR"
+          xcode-project build-ipa \
+            --project "Narabu.xcodeproj" \
+            --scheme "Narabu"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/Products/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
