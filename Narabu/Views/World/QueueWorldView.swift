@@ -4,11 +4,46 @@ import SwiftUI
 ///
 /// 手前に後ろの人、中ほどに自分、その先に前の人が続き、
 /// 奥は地平線まで人で埋まっている。景色は進むにつれて移り変わる。
+/// ごぼう抜き中の状態。走っているあいだだけ存在する。
+struct OvertakeRun: Equatable {
+    let item: GachaItem
+    /// 走り出したときの残り人数。
+    let fromRemaining: Int
+    /// 実際に追い抜く人数。
+    let peopleSkipped: Int
+    let startedAt: Date
+
+    var duration: Double { item.overtakeDuration }
+
+    /// 0 から 1 まで。終わったら 1 のまま。
+    func progress(at date: Date) -> Double {
+        min(1, max(0, date.timeIntervalSince(startedAt) / duration))
+    }
+
+    /// 走っている途中の見かけの残り人数。
+    func displayedRemaining(at date: Date) -> Int {
+        let eased = easeInOut(progress(at: date))
+        return fromRemaining - Int((Double(peopleSkipped) * eased).rounded())
+    }
+
+    /// いま何人抜いたか。
+    func countedSoFar(at date: Date) -> Int {
+        Int((Double(peopleSkipped) * easeInOut(progress(at: date))).rounded())
+    }
+
+    /// 走り出しと止まりぎわをなめらかにする。
+    private func easeInOut(_ t: Double) -> Double {
+        t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+    }
+}
+
 struct QueueWorldView: View {
     let anchorProgress: Int
     let anchorDate: Date
     /// 前の人に絡んだ直後に一瞬だけ姿勢を崩す。
     let disturbance: Double
+    /// ごぼう抜き中だけ入る。
+    let overtake: OvertakeRun?
     let onTapPersonAhead: () -> Void
 
     /// 自分より後ろに見える人数。
@@ -29,17 +64,26 @@ struct QueueWorldView: View {
     private func draw(in context: GraphicsContext, size: CGSize, date: Date) {
         let served = QueueEngine.servedCountExact(from: anchorDate, to: date)
         let progressExact = min(Double(QueueWorld.length), Double(anchorProgress) + served)
-        let progress = Int(progressExact)
-        let remaining = QueueWorld.length - progress
         let time = date.timeIntervalSince1970
         let horizonY = size.height * 0.30
 
+        // 走っている最中は、追い抜き終わった位置ではなく途中の位置を描く。
+        let remaining: Int
+        let scroll: Double
+        if let overtake {
+            remaining = overtake.displayedRemaining(at: date)
+            scroll = Double(QueueWorld.length - remaining)
+        } else {
+            remaining = QueueWorld.length - Int(progressExact)
+            scroll = progressExact
+        }
+
         drawScenery(
-            progress: progress,
+            progress: QueueWorld.length - remaining,
             in: context,
             size: size,
             horizonY: horizonY,
-            scroll: progressExact,
+            scroll: scroll,
             time: time
         )
 
@@ -48,8 +92,13 @@ struct QueueWorldView: View {
             size: size,
             horizonY: horizonY,
             remaining: remaining,
-            time: time
+            time: time,
+            date: date
         )
+
+        if let overtake {
+            drawOvertakeCounter(overtake, in: context, size: size, date: date)
+        }
     }
 
     // MARK: - 景色
@@ -96,11 +145,21 @@ struct QueueWorldView: View {
         size: CGSize,
         horizonY: Double,
         remaining: Int,
-        time: Double
+        time: Double,
+        date: Date
     ) {
         let baseY = size.height * 1.18
         let centerX = size.width / 2
         let slotCount = Double(Self.behindCount + Self.aheadCount)
+
+        // 走っているあいだは列から横に出る。
+        let sidestep = overtake.map { run -> Double in
+            let t = run.progress(at: date)
+            // 出るのも戻るのも一瞬で、大半は横を走っている。
+            let out = min(1, t / 0.14)
+            let back = min(1, max(0, (1 - t) / 0.14))
+            return min(out, back) * size.width * 0.30
+        } ?? 0
 
         // 奥の人から描いて、手前の人が重なるようにする。
         for slot in stride(from: Self.aheadCount, through: -Self.behindCount, by: -1) {
@@ -121,10 +180,13 @@ struct QueueWorldView: View {
 
             // 列はまっすぐではなく、少しずつ左右にずれて厚みが出る。
             let lateral = person.lateralOffset * size.width * 0.16 * scale
-            let feet = CGPoint(x: centerX + lateral, y: feetY)
+            let feet = CGPoint(
+                x: centerX + lateral + (isPlayer ? sidestep : 0),
+                y: feetY
+            )
             let personHeight = height * person.heightScale
 
-            if isPlayer {
+            if isPlayer, overtake == nil {
                 drawPlayerRing(in: context, feet: feet, height: personHeight, time: time)
             }
 
@@ -140,12 +202,63 @@ struct QueueWorldView: View {
                 fade: fade(atDepth: depth)
             )
 
+            if isPlayer, let overtake {
+                VehicleRenderer.draw(
+                    overtake.item.vehicle,
+                    in: context,
+                    feet: feet,
+                    height: personHeight,
+                    time: time
+                )
+            }
+
             if isPlayer {
                 drawPlayerLabel(in: context, feet: feet, height: personHeight)
-            } else if slot == 1, !person.remark.isEmpty {
+            } else if slot == 1, overtake == nil, !person.remark.isEmpty {
                 drawRemark(person.remark, in: context, feet: feet, height: personHeight, size: size)
             }
         }
+    }
+
+    // MARK: - ごぼう抜きのカウンター
+
+    /// 走っているあいだ、抜いた人数が増えていくのを見せる。
+    private func drawOvertakeCounter(
+        _ run: OvertakeRun,
+        in context: GraphicsContext,
+        size: CGSize,
+        date: Date
+    ) {
+        let counted = run.countedSoFar(at: date)
+        let isDone = run.progress(at: date) >= 1
+        let color = run.item.rarity.color
+
+        let title = context.resolve(
+            Text("\(counted)人抜き\(isDone ? "！" : "")")
+                .font(.system(size: isDone ? 46 : 38, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+        )
+        let center = CGPoint(x: size.width / 2, y: size.height * 0.2)
+
+        // 読めるように後ろに影を敷く。
+        let measured = title.measure(in: size)
+        context.fill(
+            Path(roundedRect: CGRect(
+                x: center.x - measured.width / 2 - 20,
+                y: center.y - measured.height / 2 - 10,
+                width: measured.width + 40,
+                height: measured.height + 20
+            ), cornerRadius: 12),
+            with: .color(color.opacity(0.85))
+        )
+        context.draw(title, at: center)
+
+        context.draw(
+            Text(run.item.name)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white),
+            at: CGPoint(x: center.x, y: center.y + measured.height / 2 + 22)
+        )
     }
 
     /// 奥ほど景色に溶けていく。

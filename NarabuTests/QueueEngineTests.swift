@@ -1,6 +1,22 @@
 import XCTest
 @testable import Narabu
 
+/// 排出率の検証を毎回同じ結果にするための乱数。
+struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed == 0 ? 0x9E3779B97F4A7C15 : seed
+    }
+
+    mutating func next() -> UInt64 {
+        state ^= state << 13
+        state ^= state >> 7
+        state ^= state << 17
+        return state
+    }
+}
+
 final class QueueEngineTests: XCTestCase {
     private let noon = Date(timeIntervalSince1970: 1_760_000_000)
 
@@ -145,6 +161,113 @@ final class QueueEngineTests: XCTestCase {
             })
             XCTAssertGreaterThan(messages.count, 2, "\(action.label)の反応が単調すぎる")
         }
+    }
+
+    // MARK: - ガチャ
+
+    func testDropRatesAddUpToOneHundredPercent() {
+        let total = GachaCatalog.items.reduce(0) { $0 + $1.dropRate }
+        XCTAssertEqual(total, 1.0, accuracy: 0.0001, "排出率の合計が100%になっていない")
+    }
+
+    func testEveryItemIsReachableAndRoughlyMatchesItsRate() {
+        var counts: [String: Int] = [:]
+        var generator = SeededGenerator(seed: 20_260_730)
+
+        let trials = 40_000
+        for _ in 0..<trials {
+            counts[GachaMachine.draw(using: &generator).id, default: 0] += 1
+        }
+
+        for item in GachaCatalog.items {
+            let observed = Double(counts[item.id] ?? 0) / Double(trials)
+            XCTAssertEqual(observed, item.dropRate, accuracy: 0.015,
+                           "\(item.name)の排出率が設定から離れすぎている")
+        }
+    }
+
+    func testCatalogHasTheFiveExpectedItems() {
+        XCTAssertEqual(GachaCatalog.items.count, 5)
+        XCTAssertEqual(GachaCatalog.item(id: "dash")?.people, 5)
+        XCTAssertEqual(GachaCatalog.item(id: "bicycle")?.people, 20)
+        XCTAssertEqual(GachaCatalog.item(id: "motorbike")?.people, 50)
+        XCTAssertEqual(GachaCatalog.item(id: "car")?.people, 100)
+        XCTAssertEqual(GachaCatalog.item(id: "train")?.people, 300)
+    }
+
+    /// 画面の中で数えるのではなく、保存した時刻から求めているかどうか。
+    func testFreeGachaCooldownComesFromStoredTime() {
+        let drawnAt = noon
+        XCTAssertNil(
+            GachaMachine.remainingCooldown(lastDrawnAt: nil, now: noon),
+            "一度も引いていないなら引ける"
+        )
+        XCTAssertEqual(
+            GachaMachine.remainingCooldown(lastDrawnAt: drawnAt, now: noon.addingTimeInterval(600)) ?? 0,
+            3_000,
+            accuracy: 1
+        )
+        XCTAssertNil(
+            GachaMachine.remainingCooldown(lastDrawnAt: drawnAt, now: noon.addingTimeInterval(3_600)),
+            "1時間経ったら引ける"
+        )
+        XCTAssertNil(
+            GachaMachine.remainingCooldown(lastDrawnAt: drawnAt, now: noon.addingTimeInterval(86_400)),
+            "閉じている間に何時間経っていても引ける"
+        )
+    }
+
+    func testCountdownLabelIsMinutesAndSeconds() {
+        XCTAssertEqual(GachaMachine.countdownLabel(2_538), "42:18")
+        XCTAssertEqual(GachaMachine.countdownLabel(59), "00:59")
+    }
+
+    // MARK: - ごぼう抜き
+
+    func testOvertakeCounterRisesFromZeroToTheSkippedCount() {
+        let run = OvertakeRun(
+            item: GachaCatalog.item(id: "car")!,
+            fromRemaining: 4_000,
+            peopleSkipped: 100,
+            startedAt: noon
+        )
+
+        XCTAssertEqual(run.countedSoFar(at: noon), 0)
+        XCTAssertEqual(run.countedSoFar(at: noon.addingTimeInterval(run.duration)), 100)
+        XCTAssertEqual(run.displayedRemaining(at: noon), 4_000)
+        XCTAssertEqual(run.displayedRemaining(at: noon.addingTimeInterval(run.duration)), 3_900)
+
+        var previous = 0
+        for step in stride(from: 0.0, through: run.duration, by: 0.1) {
+            let counted = run.countedSoFar(at: noon.addingTimeInterval(step))
+            XCTAssertGreaterThanOrEqual(counted, previous, "カウンターが戻っている")
+            previous = counted
+        }
+    }
+
+    /// 保存した項目を増やしても、古い記録が読めなくなってはいけない。
+    func testOldSaveDataStillLoads() throws {
+        let legacy = """
+        {
+          "joinedAt": 760000000,
+          "lapStartedAt": 760000000,
+          "anchorDate": 760000000,
+          "anchorProgress": 1234,
+          "lap": 2,
+          "totalCutIns": 3,
+          "totalSkipped": 0,
+          "totalInteractions": 7,
+          "nextTicketNumber": 2,
+          "collected": []
+        }
+        """
+        let state = try JSONDecoder().decode(QueueState.self, from: Data(legacy.utf8))
+
+        XCTAssertEqual(state.anchorProgress, 1_234)
+        XCTAssertEqual(state.lap, 2)
+        XCTAssertTrue(state.inventory.isEmpty)
+        XCTAssertFalse(state.hasDrawnStarterGacha)
+        XCTAssertNil(state.lastFreeGachaAt)
     }
 
     // MARK: - 景品

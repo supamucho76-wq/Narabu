@@ -71,6 +71,88 @@ final class QueueStore {
         PrizeCatalog.prize(forLap: state.lap, joinedAt: state.joinedAt)
     }
 
+    // MARK: - ガチャとアイテム
+
+    /// 初回のスタートダッシュ5連をまだ引いていないか。
+    var needsStarterGacha: Bool { !state.hasDrawnStarterGacha }
+
+    /// 無料ガチャが引けるまでの残り時間。引けるなら nil。
+    var freeGachaCooldown: TimeInterval? {
+        GachaMachine.remainingCooldown(lastDrawnAt: state.lastFreeGachaAt, now: now)
+    }
+
+    var canDrawFreeGacha: Bool {
+        state.hasDrawnStarterGacha && freeGachaCooldown == nil
+    }
+
+    /// 所持しているアイテム。カタログの並び順で返す。
+    var ownedItems: [(item: GachaItem, count: Int)] {
+        GachaCatalog.items.compactMap { item in
+            let count = state.inventory[item.id] ?? 0
+            return count > 0 ? (item, count) : nil
+        }
+    }
+
+    func count(of item: GachaItem) -> Int { state.inventory[item.id] ?? 0 }
+
+    /// スタートダッシュ5連を引く。一度きり。
+    func drawStarterGacha() -> [GachaItem] {
+        guard needsStarterGacha else { return [] }
+
+        let results = GachaMachine.draw(count: GachaCatalog.starterDrawCount)
+        add(results)
+        state.hasDrawnStarterGacha = true
+        state.lastFreeGachaAt = now
+        save()
+        return results
+    }
+
+    /// 1時間ごとの無料ガチャを引く。
+    func drawFreeGacha() -> GachaItem? {
+        guard canDrawFreeGacha else { return nil }
+
+        let result = GachaMachine.draw()
+        add([result])
+        state.lastFreeGachaAt = now
+        save()
+        return result
+    }
+
+    private func add(_ items: [GachaItem]) {
+        for item in items {
+            state.inventory[item.id, default: 0] += 1
+        }
+    }
+
+    /// アイテムを使ってごぼう抜きする。実際に追い抜けた人数を返す。
+    ///
+    /// 店の前より先には進めないので、残り人数を超えるぶんは切り捨てる。
+    @discardableResult
+    func useItem(_ item: GachaItem) -> Int {
+        guard count(of: item) > 0, remaining > 0 else { return 0 }
+
+        let skipped = min(item.people, remaining)
+        state.inventory[item.id, default: 0] -= 1
+        if state.inventory[item.id] == 0 {
+            state.inventory.removeValue(forKey: item.id)
+        }
+        state.totalSkipped += skipped
+        moveAnchor(to: progress + skipped)
+        save()
+
+        return skipped
+    }
+
+    #if DEBUG
+    /// 開発中に初回ガチャを何度も確認するための巻き戻し。
+    func resetGachaForDebugging() {
+        state.hasDrawnStarterGacha = false
+        state.lastFreeGachaAt = nil
+        state.inventory = [:]
+        save()
+    }
+    #endif
+
     // MARK: - 操作
 
     /// 受付で景品を受け取り、最後尾に並び直す。

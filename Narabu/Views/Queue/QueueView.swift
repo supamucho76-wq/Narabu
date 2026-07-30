@@ -8,12 +8,18 @@ struct QueueView: View {
     @Environment(PurchaseStore.self) private var purchases
 
     @State private var isShowingCollection = false
+    @State private var isShowingItems = false
     @State private var isShowingPrize = false
     @State private var claimedPrize: CollectedPrize?
     @State private var reaction: String?
     @State private var reactionToken = 0
     @State private var disturbance: Double = 0
+    @State private var overtake: OvertakeRun?
+    @State private var gachaMode: GachaView.Mode?
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
+
+    /// 演出中はボタンを受け付けない。
+    private var isBusy: Bool { overtake != nil }
 
     var body: some View {
         ZStack {
@@ -29,6 +35,9 @@ struct QueueView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
+            .opacity(isBusy ? 0.25 : 1)
+            .allowsHitTesting(!isBusy)
+            .animation(.easeInOut(duration: 0.2), value: isBusy)
 
             if !hasSeenIntro {
                 IntroView { hasSeenIntro = true }
@@ -37,21 +46,44 @@ struct QueueView: View {
         }
         .animation(.easeInOut(duration: 0.4), value: hasSeenIntro)
         .onChange(of: store.stage.name) { _, _ in
-            // 新しい場所に着いたことを知らせる。
             show(reaction: store.stage.arrivalNote)
+        }
+        .onChange(of: hasSeenIntro) { _, seen in
+            if seen, store.needsStarterGacha { gachaMode = .starter }
         }
         .sheet(isPresented: $isShowingCollection) {
             CollectionView()
+        }
+        .sheet(isPresented: $isShowingItems) {
+            ItemSheet(
+                onUse: { item in use(item) },
+                onPurchase: { Task { await purchaseSkip() } }
+            )
+            .presentationDetents([.medium, .large])
         }
         .fullScreenCover(isPresented: $isShowingPrize) {
             if let claimedPrize {
                 PrizeRevealView(record: claimedPrize)
             }
         }
+        .fullScreenCover(item: $gachaMode) { mode in
+            GachaView(
+                mode: mode,
+                onDraw: {
+                    switch mode {
+                    case .starter: store.drawStarterGacha()
+                    case .free: store.drawFreeGacha().map { [$0] } ?? []
+                    }
+                },
+                onFinish: { gachaMode = nil }
+            )
+        }
         .task {
             store.startTicking()
             await NotificationScheduler.requestAuthorization()
             await rescheduleNotifications()
+            // 説明を見終わっている人が初回ガチャ未実施なら、すぐ引かせる。
+            if hasSeenIntro, store.needsStarterGacha { gachaMode = .starter }
         }
     }
 
@@ -62,7 +94,8 @@ struct QueueView: View {
             anchorProgress: store.state.anchorProgress,
             anchorDate: store.state.anchorDate,
             disturbance: disturbance,
-            onTapPersonAhead: { perform(.tapShoulder) }
+            overtake: overtake,
+            onTapPersonAhead: { if !isBusy { perform(.tapShoulder) } }
         )
         .ignoresSafeArea()
     }
@@ -80,22 +113,22 @@ struct QueueView: View {
             }
             .font(.caption2.weight(.semibold))
 
-            if let untilNext = store.peopleUntilNextStage, let next = store.nextStageName {
-                Text("あと\(untilNext.formatted())人で\(next)")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Color(red: 1.0, green: 0.88, blue: 0.5))
-            }
-
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("あと")
                 Text(store.remaining, format: .number)
-                    .font(.system(size: 34, weight: .semibold, design: .rounded))
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
                     .animation(.snappy, value: store.remaining)
                 Text("人")
             }
             .font(.caption.weight(.medium))
+
+            if let untilNext = store.peopleUntilNextStage, let next = store.nextStageName {
+                Text("あと\(untilNext.formatted())人で\(next)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Color(red: 1.0, green: 0.88, blue: 0.5))
+            }
 
             progressBar
         }
@@ -162,7 +195,7 @@ struct QueueView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .frame(maxWidth: .infinity, minHeight: 46)
                     .background(AppTheme.paper.opacity(0.92))
                     .foregroundStyle(AppTheme.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -178,46 +211,124 @@ struct QueueView: View {
     private var bottomBar: some View {
         VStack(spacing: 6) {
             if store.hasReachedReception {
-                Button("受付で受け取る") { claim() }
+                Button("店で受け取る") { claim() }
                     .buttonStyle(QuietButtonStyle(emphasized: true))
             } else {
-                Button {
-                    Task { await skipAhead() }
-                } label: {
-                    if purchases.isPurchasing {
-                        ProgressView()
-                    } else {
-                        Text("\(PurchaseStore.skipAmount)人抜かす　\(purchases.priceLabel)")
-                    }
-                }
-                .buttonStyle(QuietButtonStyle(emphasized: true))
-                .disabled(purchases.isPurchasing)
+                gachaButton
             }
 
             HStack(spacing: 6) {
+                Button {
+                    isShowingItems = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "shippingbox.fill")
+                        Text("アイテム")
+                        if store.ownedItems.isEmpty == false {
+                            Text("\(store.ownedItems.reduce(0) { $0 + $1.count })")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(AppTheme.stamp)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                .buttonStyle(QuietButtonStyle())
+
                 Button("景品図鑑") { isShowingCollection = true }
                     .buttonStyle(QuietButtonStyle())
-                Button("列を抜ける") { store.leaveQueue() }
-                    .buttonStyle(QuietButtonStyle())
             }
+        }
+    }
+
+    /// 引ける時だけ目立たせ、それ以外は残り時間を静かに出す。
+    @ViewBuilder
+    private var gachaButton: some View {
+        if store.canDrawFreeGacha {
+            Button {
+                gachaMode = .free
+            } label: {
+                Label("無料ガチャが引けます！", systemImage: "gift.fill")
+            }
+            .buttonStyle(QuietButtonStyle(emphasized: true))
+        } else if let cooldown = store.freeGachaCooldown {
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                Text("次の無料ガチャまで \(GachaMachine.countdownLabel(cooldown))")
+                    .monospacedDigit()
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background(.black.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
     }
 
     // MARK: - 動作
 
     private func perform(_ action: QueueAction) {
+        guard !isBusy else { return }
+
         let outcome = store.interactWithPersonAhead(action)
         show(reaction: outcome.message)
 
         UIImpactFeedbackGenerator(style: outcome.didAdvance ? .heavy : .light)
             .impactOccurred()
 
-        // 絡まれた前の人が一瞬だけ身をよじる。
         withAnimation(.easeOut(duration: 0.12)) { disturbance = 1 }
         withAnimation(.easeIn(duration: 0.45).delay(0.12)) { disturbance = 0 }
 
         if outcome.didAdvance {
             Task { await rescheduleNotifications() }
+        }
+    }
+
+    /// アイテムを使ってごぼう抜きする。
+    ///
+    /// 順位は先に確定させ、画面だけが演出の時間をかけて追いつく。
+    /// こうしておくと、途中でアプリを閉じてもアイテムが消えたままにならない。
+    private func use(_ item: GachaItem) {
+        guard !isBusy else { return }
+
+        let before = store.remaining
+        let skipped = store.useItem(item)
+        guard skipped > 0 else { return }
+
+        runOvertake(item: item, from: before, skipped: skipped)
+    }
+
+    /// 課金して進む。演出は車と同じものを使う。
+    private func purchaseSkip() async {
+        guard !isBusy, await purchases.purchaseSkip() else { return }
+
+        let before = store.remaining
+        let skipped = min(PurchaseStore.skipAmount, before)
+        guard skipped > 0 else { return }
+
+        store.skipAhead(by: skipped)
+        if let car = GachaCatalog.item(id: "car") {
+            runOvertake(item: car, from: before, skipped: skipped)
+        }
+    }
+
+    private func runOvertake(item: GachaItem, from before: Int, skipped: Int) {
+        let run = OvertakeRun(
+            item: item,
+            fromRemaining: before,
+            peopleSkipped: skipped,
+            startedAt: .now
+        )
+        overtake = run
+
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+
+        Task {
+            try? await Task.sleep(for: .seconds(run.duration + 0.6))
+            overtake = nil
+            await rescheduleNotifications()
         }
     }
 
@@ -240,16 +351,19 @@ struct QueueView: View {
         Task { await rescheduleNotifications() }
     }
 
-    private func skipAhead() async {
-        guard await purchases.purchaseSkip() else { return }
-        store.skipAhead(by: PurchaseStore.skipAmount)
-        await rescheduleNotifications()
-    }
-
     private func rescheduleNotifications() async {
         await NotificationScheduler.reschedule(
             anchorProgress: store.state.anchorProgress,
             anchorDate: store.state.anchorDate
         )
+    }
+}
+
+extension GachaView.Mode: Identifiable {
+    var id: String {
+        switch self {
+        case .starter: "starter"
+        case .free: "free"
+        }
     }
 }
