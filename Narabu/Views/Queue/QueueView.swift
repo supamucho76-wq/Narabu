@@ -7,6 +7,7 @@ import UIKit
 struct QueueView: View {
     @Environment(QueueStore.self) private var store
     @Environment(PurchaseStore.self) private var purchases
+    @Environment(SoundPlayer.self) private var sound
 
     @State private var isShowingCollection = false
     @State private var isShowingItems = false
@@ -18,6 +19,7 @@ struct QueueView: View {
     @State private var gachaMode: GachaView.Mode?
     @State private var clearResult: StageClearResult?
     @State private var activeMission: Mission?
+    @State private var advancePulse: AdvancePulse?
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
     private var isBusy: Bool {
@@ -46,12 +48,16 @@ struct QueueView: View {
             if let event = store.pendingEvent {
                 EventView(event: event) { choice in
                     store.resolveEvent(choice)
+                    sound.play(choice.advance >= 0 ? .success : .fail)
+                    if choice.advance > 0 { pulse(people: choice.advance) }
                 }
                 .transition(.opacity)
             } else if let mission = activeMission {
                 MissionView(mission: mission) { success in
                     store.completeMission(mission, success: success)
                     activeMission = nil
+                    sound.play(success ? .clear : .fail)
+                    if success { pulse(people: mission.reward) }
                 }
                 .transition(.opacity)
             }
@@ -65,6 +71,7 @@ struct QueueView: View {
         .animation(.easeInOut(duration: 0.4), value: hasSeenIntro)
         .onChange(of: store.scene) { _, scene in
             show(.init(grade: .good, message: "\(scene.name)まで来た。", advance: 0))
+            sound.play(mood: SceneMood.of(scene))
         }
         .onChange(of: hasSeenIntro) { _, seen in
             if seen, store.needsStarterGacha { gachaMode = .starter }
@@ -91,6 +98,7 @@ struct QueueView: View {
         .task {
             store.startTicking()
             store.ensureMission()
+            sound.play(mood: SceneMood.of(store.scene))
             await NotificationScheduler.requestAuthorization()
             await rescheduleNotifications()
             if hasSeenIntro, store.needsStarterGacha { gachaMode = .starter }
@@ -106,6 +114,7 @@ struct QueueView: View {
             anchorDate: store.state.anchorDate,
             disturbance: disturbance,
             overtake: overtake,
+            advancePulse: advancePulse,
             onTapPersonAhead: {}
         )
         .ignoresSafeArea()
@@ -419,16 +428,34 @@ struct QueueView: View {
         switch outcome.grade {
         case .great:
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            sound.play(.great)
         case .good:
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            sound.play(.success)
         case .miss:
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            sound.play(.tap)
         case .backfire:
             UINotificationFeedbackGenerator().notificationOccurred(.error)
+            sound.play(.fail)
+        }
+
+        if outcome.advance > 0 {
+            pulse(people: outcome.advance)
         }
 
         withAnimation(.easeOut(duration: 0.12)) { disturbance = 1 }
         withAnimation(.easeIn(duration: 0.45).delay(0.12)) { disturbance = 0 }
+    }
+
+    /// 前に進んだ余韻。操作は止めないので、続けて押せる。
+    private func pulse(people: Int) {
+        advancePulse = AdvancePulse(startedAt: .now, people: people)
+
+        Task {
+            try? await Task.sleep(for: .seconds(AdvancePulse.duration))
+            advancePulse = nil
+        }
     }
 
     private func use(_ item: GachaItem) {
@@ -463,6 +490,7 @@ struct QueueView: View {
         )
         overtake = run
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        sound.play(.overtake)
 
         Task {
             try? await Task.sleep(for: .seconds(run.duration + 0.6))
@@ -476,6 +504,7 @@ struct QueueView: View {
         clearResult = result
         store.ensureMission()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        sound.play(.clear)
         Task { await rescheduleNotifications() }
     }
 

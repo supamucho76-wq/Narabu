@@ -9,6 +9,7 @@ enum AppRuntime {
 struct NarabuApp: App {
     @State private var queue = QueueStore()
     @State private var purchases = PurchaseStore()
+    @State private var sound = SoundPlayer()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -16,6 +17,7 @@ struct NarabuApp: App {
             QueueView()
                 .environment(queue)
                 .environment(purchases)
+                .environment(sound)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

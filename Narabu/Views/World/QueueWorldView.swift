@@ -37,6 +37,31 @@ struct OvertakeRun: Equatable {
     }
 }
 
+/// 前に進んだ直後の余韻。
+///
+/// 操作は止めずに、カメラだけが少し前へ寄って戻る。
+/// これがないと、人数だけ変わって前に進んだ実感が出ない。
+struct AdvancePulse: Equatable {
+    let startedAt: Date
+    /// 進んだ人数。多いほど寄りが強くなる。
+    let people: Int
+
+    static let duration: Double = 0.55
+
+    /// 0から1へ。終わったら1のまま。
+    func progress(at date: Date) -> Double {
+        min(1, max(0, date.timeIntervalSince(startedAt) / Self.duration))
+    }
+
+    /// 寄り具合。ぐっと寄ってから、ゆっくり戻る。
+    func strength(at date: Date) -> Double {
+        let t = progress(at: date)
+        guard t < 1 else { return 0 }
+        let weight = min(1, Double(people) / 3)
+        return sin(t * .pi) * weight
+    }
+}
+
 struct QueueWorldView: View {
     let stage: Stage
     let anchorProgress: Int
@@ -45,6 +70,8 @@ struct QueueWorldView: View {
     let disturbance: Double
     /// ごぼう抜き中だけ入る。
     let overtake: OvertakeRun?
+    /// 直前に前進した時刻と人数。少しのあいだカメラが前に寄る。
+    let advancePulse: AdvancePulse?
     let onTapPersonAhead: () -> Void
 
     /// 自分より後ろに見える人数。
@@ -66,7 +93,9 @@ struct QueueWorldView: View {
         let served = QueueEngine.servedCountExact(from: anchorDate, to: date)
         let progressExact = min(Double(stage.queueLength), Double(anchorProgress) + served)
         let time = date.timeIntervalSince1970
-        let horizonY = size.height * 0.30
+        // 前に進んだ直後は、地平線が下がってカメラが前へ寄ったように見える。
+        let push = advancePulse?.strength(at: date) ?? 0
+        let horizonY = size.height * (0.30 + push * 0.035)
 
         // 走っている最中は、追い抜き終わった位置ではなく途中の位置を描く。
         let remaining: Int
@@ -96,7 +125,8 @@ struct QueueWorldView: View {
             remaining: remaining,
             scene: stage.scene(atProgress: progress),
             time: time,
-            date: date
+            date: date,
+            push: push
         )
 
         if let overtake {
@@ -149,9 +179,11 @@ struct QueueWorldView: View {
         remaining: Int,
         scene: SceneKind,
         time: Double,
-        date: Date
+        date: Date,
+        push: Double
     ) {
-        let baseY = size.height * 1.18
+        // 寄ったぶんだけ人が大きくなり、手前へ流れて見える。
+        let baseY = size.height * (1.18 + push * 0.05)
         let centerX = size.width / 2
         let slotCount = Double(Self.behindCount + Self.aheadCount)
 
@@ -166,7 +198,9 @@ struct QueueWorldView: View {
 
         // 奥の人から描いて、手前の人が重なるようにする。
         for slot in stride(from: Self.aheadCount, through: -Self.behindCount, by: -1) {
-            let t = (Double(slot) + Double(Self.behindCount)) / slotCount
+            // 前進の直後だけ、列全体がわずかに手前へずれて追い越した感じが出る。
+            let shifted = Double(slot) + Double(Self.behindCount) - push * 0.6
+            let t = shifted / slotCount
             let depth = pow(max(t, 0), 0.42)
             let scale = pow(max(0, 1 - depth), 1.3)
             guard scale > 0.001 else { continue }

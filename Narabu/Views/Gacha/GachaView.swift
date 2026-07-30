@@ -56,6 +56,7 @@ struct GachaView: View {
     let onDraw: () -> [GachaItem]
     let onFinish: () -> Void
 
+    @Environment(SoundPlayer.self) private var sound
     @State private var phase: Phase = .ready
     @State private var results: [GachaItem] = []
     @State private var revealIndex = 0
@@ -366,6 +367,7 @@ struct GachaView: View {
         }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        sound.play(.gacha)
 
         Task {
             try? await Task.sleep(for: .seconds(item.rarity.buildUpDuration))
@@ -375,9 +377,9 @@ struct GachaView: View {
                 burst = true
                 phase = .revealed
             }
-            UINotificationFeedbackGenerator().notificationOccurred(
-                item.rarity.glowStrength > 0.5 ? .success : .warning
-            )
+            let isRare = item.rarity.glowStrength > 0.5
+            UINotificationFeedbackGenerator().notificationOccurred(isRare ? .success : .warning)
+            sound.play(isRare ? .rare : .success)
         }
     }
 

@@ -349,6 +349,49 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertNotNil(withEffects.first?.hiddenEffectLabel)
     }
 
+    // MARK: - 音
+
+    /// 音源ファイルを持たないので、波形が正しく焼けることが前提になる。
+    func testToneRendersAudibleSamples() throws {
+        let buffer = try XCTUnwrap(ToneSynth.render(
+            notes: [.init(frequency: 440, start: 0, duration: 0.2, volume: 0.5, timbre: .sine)],
+            duration: 0.25
+        ))
+
+        XCTAssertEqual(Double(buffer.frameLength), 0.25 * ToneSynth.sampleRate, accuracy: 2)
+
+        let channel = try XCTUnwrap(buffer.floatChannelData?[0])
+        var peak: Float = 0
+        for frame in 0..<Int(buffer.frameLength) {
+            peak = max(peak, abs(channel[frame]))
+            XCTAssertLessThanOrEqual(abs(channel[frame]), 1.0, "音が振り切れている")
+        }
+        XCTAssertGreaterThan(peak, 0.1, "音が鳴っていない")
+    }
+
+    func testEveryScenePicksAMood() {
+        for scene in SceneKind.allCases {
+            let mood = SceneMood.of(scene)
+            XCTAssertGreaterThan(mood.beatDuration, 0)
+            XCTAssertFalse(mood.chords.isEmpty)
+            XCTAssertFalse(mood.scale.isEmpty)
+        }
+    }
+
+    func testPitchFollowsTheOctave() {
+        XCTAssertEqual(ToneSynth.pitch(semitonesFromA4: 0), 440, accuracy: 0.01)
+        XCTAssertEqual(ToneSynth.pitch(semitonesFromA4: 12), 880, accuracy: 0.01)
+    }
+
+    // MARK: - 前進の余韻
+
+    func testAdvancePulseRisesAndSettles() {
+        let pulse = AdvancePulse(startedAt: noon, people: 3)
+        XCTAssertEqual(pulse.strength(at: noon), 0, accuracy: 0.01)
+        XCTAssertGreaterThan(pulse.strength(at: noon.addingTimeInterval(AdvancePulse.duration / 2)), 0.5)
+        XCTAssertEqual(pulse.strength(at: noon.addingTimeInterval(AdvancePulse.duration)), 0, accuracy: 0.01)
+    }
+
     // MARK: - ガチャ
 
     func testDropRatesAddUpToOneHundredPercent() {

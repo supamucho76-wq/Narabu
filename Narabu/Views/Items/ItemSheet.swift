@@ -4,6 +4,7 @@ import SwiftUI
 struct ItemSheet: View {
     @Environment(QueueStore.self) private var store
     @Environment(PurchaseStore.self) private var purchases
+    @Environment(SoundPlayer.self) private var sound
     @Environment(\.dismiss) private var dismiss
 
     /// 使うアイテムを親に渡す。演出は行列の画面で行う。
@@ -41,6 +42,7 @@ struct ItemSheet: View {
                 }
 
                 purchaseCard
+                soundSettings
 
                 #if DEBUG
                 debugSection
@@ -150,6 +152,27 @@ struct ItemSheet: View {
                 .strokeBorder(AppTheme.ink.opacity(0.12), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// 音の入り切り。
+    private var soundSettings: some View {
+        @Bindable var sound = sound
+
+        return VStack(spacing: 6) {
+            Toggle("効果音", isOn: $sound.isEffectEnabled)
+            Toggle("BGM", isOn: $sound.isMusicEnabled)
+        }
+        .font(.subheadline)
+        .foregroundStyle(AppTheme.ink)
+        .tint(AppTheme.stamp)
+        .padding(12)
+        .background(AppTheme.paper)
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(AppTheme.ink.opacity(0.12), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.top, 6)
     }
 
     #if DEBUG
