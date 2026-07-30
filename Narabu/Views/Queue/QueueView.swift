@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// 並んでいるあいだ、ずっと表示されている画面。
-/// 画面のほとんどは前に並んでいる人たちで埋まっている。
+/// 画面のほとんどは列そのもので、数字は控えめに重ねるだけ。
 struct QueueView: View {
     @Environment(QueueStore.self) private var store
     @Environment(PurchaseStore.self) private var purchases
@@ -12,27 +12,23 @@ struct QueueView: View {
     @State private var claimedPrize: CollectedPrize?
     @State private var reaction: String?
     @State private var reactionToken = 0
+    @State private var disturbance: Double = 0
 
     var body: some View {
         ZStack {
-            AppTheme.sky(tone: store.scenery.skyTone)
-                .ignoresSafeArea()
-                .animation(.easeInOut(duration: 1.2), value: store.scenery.skyTone)
-
-            crowd
+            world
 
             VStack(spacing: 0) {
-                conditionsBar
-                positionDisplay
+                topBar
                 Spacer(minLength: 0)
                 reactionToast
-                sceneryCaption
-                actions
+                personAheadCaption
+                actionRow
+                bottomBar
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
         }
-        .foregroundStyle(AppTheme.ink)
         .sheet(isPresented: $isShowingCollection) {
             CollectionView()
         }
@@ -48,59 +44,66 @@ struct QueueView: View {
         }
     }
 
-    // MARK: - 前に並んでいる人たち
+    // MARK: - 列の世界
 
-    private var crowd: some View {
-        QueueCrowdView(
-            position: store.position,
+    private var world: some View {
+        QueueWorldView(
+            anchorProgress: store.state.anchorProgress,
             anchorDate: store.state.anchorDate,
-            onTapPersonAhead: tapPersonAhead
+            disturbance: disturbance,
+            onTapPersonAhead: { perform(.tapShoulder) }
         )
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea()
     }
 
-    // MARK: - 上部：天気と経過
+    // MARK: - 上部
 
-    private var conditionsBar: some View {
-        HStack(spacing: 14) {
-            Label(
-                store.scenery.isSheltered ? "屋根の下" : store.weather.label,
-                systemImage: store.scenery.isSheltered ? "building.2" : store.weather.symbolName
-            )
+    private var topBar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                Label(
+                    store.stage.kind.isSheltered ? store.stage.name : store.weather.label,
+                    systemImage: store.stage.kind.isSheltered ? "building.2" : store.weather.symbolName
+                )
+                Spacer()
+                Text("\(store.hoursInCurrentLap)時間目")
+                Text("\(store.state.lap)周目")
+            }
+            .font(.caption2.weight(.semibold))
 
-            Spacer()
-
-            Text("\(store.daysInCurrentLap)日目")
-            Text("\(store.state.lap)周目")
-        }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(AppTheme.inkSecondary)
-        .padding(.top, 6)
-    }
-
-    // MARK: - 並び順
-
-    private var positionDisplay: some View {
-        VStack(spacing: 0) {
-            if store.hasReachedFront {
-                PlacardLabel(text: "お呼びしました")
-                Text("先頭")
-                    .font(.system(size: 52, weight: .light, design: .serif))
-            } else {
-                Text(store.position, format: .number)
-                    .font(.system(size: 56, weight: .light, design: .rounded))
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("あと")
+                Text(store.remaining, format: .number)
+                    .font(.system(size: 34, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
-                    .animation(.snappy, value: store.position)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                PlacardLabel(text: "人目")
+                    .animation(.snappy, value: store.remaining)
+                Text("人")
             }
+            .font(.caption.weight(.medium))
+
+            progressBar
         }
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.55), radius: 5, y: 1)
         .padding(.top, 4)
     }
 
-    // MARK: - 叩いたときの反応
+    private var progressBar: some View {
+        GeometryReader { geometry in
+            let ratio = Double(store.progress) / Double(QueueWorld.length)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.28))
+                Capsule()
+                    .fill(AppTheme.stamp)
+                    .frame(width: max(2, geometry.size.width * ratio))
+            }
+        }
+        .frame(height: 3)
+        .padding(.horizontal, 2)
+    }
+
+    // MARK: - 反応と前の人
 
     private var reactionToast: some View {
         Group {
@@ -110,43 +113,57 @@ struct QueueView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(AppTheme.paper.opacity(0.94))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .strokeBorder(AppTheme.ink.opacity(0.18), lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .background(AppTheme.paper.opacity(0.95))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .foregroundStyle(AppTheme.ink)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: reaction)
-        .padding(.bottom, 12)
+        .animation(.easeInOut(duration: 0.22), value: reaction)
+        .padding(.bottom, 10)
     }
 
-    // MARK: - 景色と前の人
+    private var personAheadCaption: some View {
+        Text("前の人：\(store.personAhead.descriptor)")
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 4, y: 1)
+            .padding(.bottom, 8)
+    }
 
-    private var sceneryCaption: some View {
-        VStack(spacing: 3) {
-            Text(store.scenery.title)
-                .font(.caption.weight(.semibold))
-            Text(store.personAhead.appearance)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.inkSecondary)
-            Text("\(store.personAhead.behavior)。\(store.personAhead.waitingLabel)。")
-                .font(.caption2)
-                .foregroundStyle(AppTheme.inkSecondary)
-                .multilineTextAlignment(.center)
+    // MARK: - アクション
+
+    private var actionRow: some View {
+        HStack(spacing: 6) {
+            ForEach(QueueAction.allCases) { action in
+                Button {
+                    perform(action)
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: action.symbolName)
+                            .font(.system(size: 15))
+                        Text(action.label)
+                            .font(.system(size: 9, weight: .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(AppTheme.paper.opacity(0.92))
+                    .foregroundStyle(AppTheme.ink)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .disabled(store.hasReachedReception)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 12)
+        .padding(.bottom, 8)
     }
 
-    // MARK: - 操作
+    // MARK: - 下部
 
-    private var actions: some View {
-        VStack(spacing: 8) {
-            if store.hasReachedFront {
-                Button("受け取る") { claim() }
+    private var bottomBar: some View {
+        VStack(spacing: 6) {
+            if store.hasReachedReception {
+                Button("受付で受け取る") { claim() }
                     .buttonStyle(QuietButtonStyle(emphasized: true))
             } else {
                 Button {
@@ -162,47 +179,34 @@ struct QueueView: View {
                 .disabled(purchases.isPurchasing)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button("景品図鑑") { isShowingCollection = true }
                     .buttonStyle(QuietButtonStyle())
-
-                Button("列を抜ける") { leaveQueue() }
+                Button("列を抜ける") { store.leaveQueue() }
                     .buttonStyle(QuietButtonStyle())
             }
-
-            summaryLine
         }
-    }
-
-    private var summaryLine: some View {
-        HStack(spacing: 10) {
-            Text("景品 \(store.state.collected.count)個")
-            if store.totalCutIns > 0 {
-                Text("割り込まれた \(store.totalCutIns)人")
-            }
-            if store.state.totalTaps > 0 {
-                Text("叩いた \(store.state.totalTaps)回")
-            }
-        }
-        .font(.caption2)
-        .foregroundStyle(AppTheme.inkSecondary)
     }
 
     // MARK: - 動作
 
-    private func tapPersonAhead() {
-        let outcome = store.tapPersonAhead()
+    private func perform(_ action: QueueAction) {
+        let outcome = store.interactWithPersonAhead(action)
         show(reaction: outcome.message)
 
         UIImpactFeedbackGenerator(style: outcome.didAdvance ? .heavy : .light)
             .impactOccurred()
+
+        // 絡まれた前の人が一瞬だけ身をよじる。
+        withAnimation(.easeOut(duration: 0.12)) { disturbance = 1 }
+        withAnimation(.easeIn(duration: 0.45).delay(0.12)) { disturbance = 0 }
 
         if outcome.didAdvance {
             Task { await rescheduleNotifications() }
         }
     }
 
-    /// 少しのあいだだけ反応を表示する。連続で叩かれても最後のものだけが残る。
+    /// 少しのあいだだけ反応を表示する。連続で押されても最後のものだけが残る。
     private func show(reaction message: String) {
         reaction = message
         reactionToken += 1
@@ -227,14 +231,9 @@ struct QueueView: View {
         await rescheduleNotifications()
     }
 
-    private func leaveQueue() {
-        store.leaveQueue()
-        Task { await rescheduleNotifications() }
-    }
-
     private func rescheduleNotifications() async {
         await NotificationScheduler.reschedule(
-            anchorPosition: store.state.anchorPosition,
+            anchorProgress: store.state.anchorProgress,
             anchorDate: store.state.anchorDate
         )
     }

@@ -4,8 +4,10 @@ import XCTest
 final class QueueEngineTests: XCTestCase {
     private let noon = Date(timeIntervalSince1970: 1_760_000_000)
 
+    // MARK: - 列の進みかた
+
     func testSameIntervalAlwaysProducesSameResult() {
-        let later = noon.addingTimeInterval(86_400 * 3)
+        let later = noon.addingTimeInterval(3_600 * 5)
         XCTAssertEqual(
             QueueEngine.servedCount(from: noon, to: later),
             QueueEngine.servedCount(from: noon, to: later),
@@ -14,10 +16,10 @@ final class QueueEngineTests: XCTestCase {
     }
 
     func testQueueAdvancesAsTimePasses() {
-        let oneDay = QueueEngine.servedCount(from: noon, to: noon.addingTimeInterval(86_400))
-        let twoDays = QueueEngine.servedCount(from: noon, to: noon.addingTimeInterval(86_400 * 2))
-        XCTAssertGreaterThan(oneDay, 0)
-        XCTAssertGreaterThan(twoDays, oneDay)
+        let oneHour = QueueEngine.servedCount(from: noon, to: noon.addingTimeInterval(3_600))
+        let twoHours = QueueEngine.servedCount(from: noon, to: noon.addingTimeInterval(7_200))
+        XCTAssertGreaterThan(oneHour, 0)
+        XCTAssertGreaterThan(twoHours, oneHour)
     }
 
     func testQueueNeverMovesBackwardForPastDates() {
@@ -27,7 +29,7 @@ final class QueueEngineTests: XCTestCase {
 
     func testCutInCountNeverDecreases() {
         var previous = 0
-        for hours in stride(from: 0, through: 24 * 14, by: 6) {
+        for hours in stride(from: 0, through: 48, by: 3) {
             let count = QueueEngine.cutInCount(
                 from: noon,
                 to: noon.addingTimeInterval(Double(hours) * 3_600)
@@ -37,27 +39,7 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
-    func testPositionStopsAtFrontAndNeverGoesNegative() {
-        let position = QueueEngine.position(
-            anchorPosition: 100,
-            anchorDate: noon,
-            at: noon.addingTimeInterval(86_400 * 60)
-        )
-        XCTAssertEqual(position, 0)
-    }
-
-    func testReachesFrontInRoughlyTwoWeeks() {
-        let start = QueueEngine.newTailPosition(seed: 42)
-        XCTAssertGreaterThanOrEqual(start, 200_000)
-        XCTAssertLessThanOrEqual(start, 260_000)
-
-        let arrival = QueueEngine.estimatedArrival(anchorPosition: start, anchorDate: noon)
-        let days = arrival.timeIntervalSince(noon) / 86_400
-        XCTAssertGreaterThan(days, 8, "早すぎると並んだ実感がない")
-        XCTAssertLessThan(days, 28, "遅すぎると忘れられる")
-    }
-
-    /// 画面を見ているあいだも数字が動いていないと、止まって見えてしまう。
+    /// 画面を見ているあいだも列が動いていないと、止まって見えてしまう。
     func testQueueAdvancesAboutOncePerFiveSeconds() {
         let perHour = QueueEngine.servedCountExact(from: noon, to: noon.addingTimeInterval(3_600))
         let secondsPerPerson = 3_600 / perHour
@@ -65,46 +47,92 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertLessThan(secondsPerPerson, 12)
     }
 
-    func testAdvanceFractionStaysBetweenZeroAndOne() {
-        for seconds in stride(from: 0, through: 600, by: 7) {
-            let fraction = QueueEngine.advanceFraction(
-                anchorDate: noon,
-                at: noon.addingTimeInterval(Double(seconds))
-            )
-            XCTAssertGreaterThanOrEqual(fraction, 0)
-            XCTAssertLessThan(fraction, 1)
+    // MARK: - 進捗
+
+    func testProgressStopsAtTheReception() {
+        let progress = QueueEngine.progress(
+            anchorProgress: 0,
+            anchorDate: noon,
+            at: noon.addingTimeInterval(86_400 * 7)
+        )
+        XCTAssertEqual(progress, QueueWorld.length)
+    }
+
+    func testProgressNeverGoesNegative() {
+        let progress = QueueEngine.progress(
+            anchorProgress: 0,
+            anchorDate: noon,
+            at: noon
+        )
+        XCTAssertGreaterThanOrEqual(progress, 0)
+    }
+
+    func testReachesReceptionWithinADay() {
+        let arrival = QueueEngine.estimatedArrival(anchorProgress: 0, anchorDate: noon)
+        let hours = arrival.timeIntervalSince(noon) / 3_600
+        XCTAssertGreaterThan(hours, 6, "早すぎると並んだ実感がない")
+        XCTAssertLessThan(hours, 30, "遅すぎると忘れられる")
+    }
+
+    // MARK: - 世界
+
+    func testEveryStageIsReachableAndOrdered() {
+        var previous = 0
+        for stage in QueueWorld.stages where stage.untilProgress != .max {
+            XCTAssertGreaterThan(stage.untilProgress, previous, "場所の順番が逆転している")
+            previous = stage.untilProgress
         }
+        XCTAssertEqual(previous, QueueWorld.length, "最後の場所が受付につながっていない")
     }
 
-    func testSceneryGetsDarkerCloserToTheFront() {
-        let far = QueueScenery.current(for: 230_000)
-        let near = QueueScenery.current(for: 10)
-        XCTAssertGreaterThan(far.skyTone, near.skyTone)
-        XCTAssertTrue(near.isSheltered)
-        XCTAssertFalse(far.isSheltered)
+    func testStageMatchesTheSpecifiedRanges() {
+        XCTAssertEqual(QueueWorld.stage(at: 0).kind, .residential)
+        XCTAssertEqual(QueueWorld.stage(at: 999).kind, .residential)
+        XCTAssertEqual(QueueWorld.stage(at: 1_000).kind, .shopping)
+        XCTAssertEqual(QueueWorld.stage(at: 3_000).kind, .forest)
+        XCTAssertEqual(QueueWorld.stage(at: 5_000).kind, .snow)
+        XCTAssertEqual(QueueWorld.stage(at: 7_000).kind, .hotel)
+        XCTAssertEqual(QueueWorld.stage(at: 7_900).kind, .palace)
+        XCTAssertEqual(QueueWorld.stage(at: 8_000).kind, .reception)
     }
 
-    func testSceneryCoversEveryPositionDownToZero() {
-        for position in [0, 1, 399, 400, 2_999, 12_000, 34_999, 180_000, 999_999] {
-            XCTAssertNotNil(QueueScenery.stages.first { position >= $0.fromPosition })
-        }
+    func testEntryBlendRisesAfterEnteringAStage() {
+        XCTAssertEqual(QueueWorld.entryBlend(at: 1_000), 0, accuracy: 0.001)
+        XCTAssertEqual(QueueWorld.entryBlend(at: 1_250), 1, accuracy: 0.001)
+        XCTAssertGreaterThan(QueueWorld.entryBlend(at: 1_125), 0.4)
     }
 
-    func testTappingSometimesMakesThePersonAheadLeave() {
+    // MARK: - 人
+
+    func testPeopleAreVariedButStable() {
+        let first = PersonFactory.person(atQueueIndex: 4_321)
+        let again = PersonFactory.person(atQueueIndex: 4_321)
+        XCTAssertEqual(first, again, "同じ人が見るたびに変わってはいけない")
+
+        let descriptors = Set((0..<400).map { PersonFactory.person(atQueueIndex: $0).descriptor })
+        XCTAssertGreaterThan(descriptors.count, 60, "並んでいる人が似たり寄ったりで飽きる")
+    }
+
+    // MARK: - アクション
+
+    func testInteractionsSometimesMakeThePersonAheadLeave() {
         let departures = (0..<2_000).filter { seed in
-            TapReactions.outcome(totalTaps: seed, seed: seed).didAdvance
+            QueueActions.outcome(action: .tapShoulder, totalInteractions: seed, seed: seed).didAdvance
         }.count
-        XCTAssertGreaterThan(departures, 0, "まったく列を抜けないと叩く意味がない")
+        XCTAssertGreaterThan(departures, 0, "まったく列を抜けないと絡む意味がない")
         XCTAssertLessThan(departures, 200, "簡単に抜けすぎると並ぶ意味がなくなる")
     }
 
-    func testTapReactionsGetColderAsTapsPileUp() {
-        let differing = (0..<200).filter { seed in
-            TapReactions.outcome(totalTaps: 1, seed: seed).message
-                != TapReactions.outcome(totalTaps: 500, seed: seed).message
-        }.count
-        XCTAssertGreaterThan(differing, 150, "叩いた回数で反応が変わっていない")
+    func testEachActionHasItsOwnReactions() {
+        for action in QueueAction.allCases {
+            let messages = Set((0..<60).map {
+                QueueActions.outcome(action: action, totalInteractions: 1, seed: $0).message
+            })
+            XCTAssertGreaterThan(messages.count, 2, "\(action.label)の反応が単調すぎる")
+        }
     }
+
+    // MARK: - 景品
 
     func testPrizeForLapCannotBeRerolled() {
         let first = PrizeCatalog.prize(forLap: 3, joinedAt: noon)

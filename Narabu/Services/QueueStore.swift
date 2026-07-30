@@ -3,13 +3,13 @@ import Observation
 
 /// 並んでいる状態のすべてを保持する。
 ///
-/// 位置そのものは保存せず、基準時刻からの経過で毎回計算する。
+/// 進捗は保存せず、基準時刻からの経過で毎回計算する。
 /// アプリを消していた間も列は進んでいる。
 @MainActor
 @Observable
 final class QueueStore {
     private(set) var state: QueueState
-    /// 表示を更新するための現在時刻。1秒ごとに進む。
+    /// 表示を更新するための現在時刻。
     private(set) var now: Date = .now
 
     private let fileURL: URL
@@ -23,26 +23,30 @@ final class QueueStore {
 
     // MARK: - 現在の状況
 
-    /// 並び順。0 は先頭で、景品を受け取れる状態。
-    var position: Int {
-        QueueEngine.position(
-            anchorPosition: state.anchorPosition,
+    /// 最後尾から何人ぶん進んだか。列の長さに達すると受付。
+    var progress: Int {
+        QueueEngine.progress(
+            anchorProgress: state.anchorProgress,
             anchorDate: state.anchorDate,
             at: now
         )
     }
 
-    var hasReachedFront: Bool { position == 0 }
+    /// 受付までの残り人数。
+    var remaining: Int { QueueWorld.length - progress }
 
-    var scenery: QueueScenery { QueueScenery.current(for: position) }
+    var hasReachedReception: Bool { remaining <= 0 }
 
-    var peopleUntilNextScenery: Int? { QueueScenery.peopleUntilNextStage(from: position) }
+    var stage: WorldStage { QueueWorld.stage(at: progress) }
 
-    /// 屋根の下に入ると、天気は景色に影響しなくなる。
+    var peopleUntilNextStage: Int? { QueueWorld.peopleUntilNextStage(at: progress) }
+
+    /// 屋根の下に入ると、天気は関係なくなる。
     var weather: QueueWeather { QueueWeather.onDay(of: now) }
 
-    var personAhead: Neighbor {
-        NeighborGenerator.neighbor(at: position, offset: -1, lap: state.lap)
+    /// すぐ前に並んでいる人。
+    var personAhead: QueuePerson {
+        PersonFactory.person(atQueueIndex: max(0, remaining - 1))
     }
 
     /// これまでに割り込まれた合計人数。基準時刻をまたいでも積み上がる。
@@ -50,22 +54,22 @@ final class QueueStore {
         state.totalCutIns + QueueEngine.cutInCount(from: state.anchorDate, to: now)
     }
 
-    /// 今の周回で並んでいる日数。
-    var daysInCurrentLap: Int {
-        max(0, Calendar.current.dateComponents([.day], from: state.lapStartedAt, to: now).day ?? 0)
+    /// 今の周回で並んでいる時間。
+    var hoursInCurrentLap: Int {
+        max(0, Int(now.timeIntervalSince(state.lapStartedAt) / 3_600))
     }
 
-    /// この周回で受け取ることになっている景品。先頭に着くまでは見せない。
+    /// この周回で受け取ることになっている景品。受付に着くまでは見せない。
     var pendingPrize: Prize {
         PrizeCatalog.prize(forLap: state.lap, joinedAt: state.joinedAt)
     }
 
     // MARK: - 操作
 
-    /// 先頭で景品を受け取り、最後尾に並び直す。
+    /// 受付で景品を受け取り、最後尾に並び直す。
     @discardableResult
     func claimPrize() -> CollectedPrize? {
-        guard hasReachedFront else { return nil }
+        guard hasReachedReception else { return nil }
 
         let prize = pendingPrize
         let record = CollectedPrize(
@@ -74,7 +78,7 @@ final class QueueStore {
             receivedAt: now,
             ticketNumber: state.nextTicketNumber,
             lap: state.lap,
-            daysWaited: daysInCurrentLap,
+            hoursWaited: hoursInCurrentLap,
             weather: weather
         )
 
@@ -82,26 +86,27 @@ final class QueueStore {
         state.nextTicketNumber += 1
         state.lap += 1
         state.lapStartedAt = now
-        moveAnchor(to: QueueEngine.newTailPosition(seed: Int(now.timeIntervalSince1970)))
+        moveAnchor(to: 0)
         save()
 
         return record
     }
 
-    /// 前の人を叩く。ごくまれに相手が列を抜けて、1人ぶん進む。
-    func tapPersonAhead() -> TapOutcome {
-        guard !hasReachedFront else {
-            return TapOutcome(message: "窓口の人を叩くのはやめておいた。", didAdvance: false)
+    /// 前の人に何かする。ごくまれに相手が列を抜けて、1人ぶん進む。
+    func interactWithPersonAhead(_ action: QueueAction) -> ActionOutcome {
+        guard !hasReachedReception else {
+            return ActionOutcome(message: "受付の人に絡むのはやめておいた。", didAdvance: false)
         }
 
-        state.totalTaps += 1
-        let outcome = TapReactions.outcome(
-            totalTaps: state.totalTaps,
-            seed: state.totalTaps &* 31 &+ position
+        state.totalInteractions += 1
+        let outcome = QueueActions.outcome(
+            action: action,
+            totalInteractions: state.totalInteractions,
+            seed: state.totalInteractions &* 31 &+ remaining
         )
 
         if outcome.didAdvance {
-            moveAnchor(to: max(0, position - 1))
+            moveAnchor(to: min(QueueWorld.length, progress + 1))
         }
         save()
 
@@ -110,24 +115,23 @@ final class QueueStore {
 
     /// 課金して前の人を追い抜く。
     func skipAhead(by people: Int) {
-        let destination = max(0, position - people)
         state.totalSkipped += people
-        moveAnchor(to: destination)
+        moveAnchor(to: min(QueueWorld.length, progress + people))
         save()
     }
 
     /// 列を抜けて、最後尾からやり直す。
     func leaveQueue() {
         state.lapStartedAt = now
-        moveAnchor(to: QueueEngine.newTailPosition(seed: Int(now.timeIntervalSince1970)))
+        moveAnchor(to: 0)
         save()
     }
 
     /// 基準を今に張り直す。割り込まれた人数は先に確定させてから移す。
-    private func moveAnchor(to newPosition: Int) {
+    private func moveAnchor(to newProgress: Int) {
         state.totalCutIns = totalCutIns
         state.anchorDate = now
-        state.anchorPosition = newPosition
+        state.anchorProgress = newProgress
     }
 
     // MARK: - 時刻の更新
@@ -136,7 +140,7 @@ final class QueueStore {
         guard ticker == nil else { return }
         ticker = Task { [weak self] in
             while !Task.isCancelled {
-                await MainActor.run { self?.refresh() }
+                self?.refresh()
                 try? await Task.sleep(for: .seconds(1))
             }
         }
@@ -147,7 +151,6 @@ final class QueueStore {
         ticker = nil
     }
 
-    /// 表示に使う現在時刻を進める。位置も割り込みもここから再計算される。
     func refresh() {
         now = .now
     }

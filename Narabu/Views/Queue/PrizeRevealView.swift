@@ -37,7 +37,7 @@ struct PrizeRevealView: View {
                 Spacer()
 
                 VStack(spacing: 6) {
-                    Text("\(record.daysWaited)日並びました。")
+                    Text("\(record.hoursWaited)時間並びました。")
                     Text("列の最後尾にお戻りください。")
                 }
                 .font(.caption)

@@ -2,45 +2,44 @@ import Foundation
 
 /// 端末に保存される、並んでいる人の全記録。
 struct QueueState: Codable, Equatable {
-    /// 初めてこの列に並んだ日。称号の判定に使う。
+    /// 初めてこの列に並んだ日。
     var joinedAt: Date
     /// 今の周回に並び始めた日。
     var lapStartedAt: Date
-    /// 位置を計算する基準の時刻。
+    /// 進捗を計算する基準の時刻。
     var anchorDate: Date
-    /// 基準時刻での並び順。
-    var anchorPosition: Int
+    /// 基準時刻での進捗。0 が最後尾、QueueWorld.length が受付。
+    var anchorProgress: Int
     /// 何周目か。
     var lap: Int
     /// これまでに割り込まれた合計人数。
     var totalCutIns: Int
     /// これまでに追い抜いた合計人数。
     var totalSkipped: Int
-    /// 前の人を叩いた合計回数。反応の悪化の度合いに使う。
-    var totalTaps: Int = 0
+    /// 前の人に絡んだ合計回数。
+    var totalInteractions: Int
     /// 次に発行する整理券の通し番号。
     var nextTicketNumber: Int
     /// 受け取った景品。
     var collected: [CollectedPrize]
 
     static func initial(now: Date = .now) -> QueueState {
-        let seed = Int(now.timeIntervalSince1970)
-        return QueueState(
+        QueueState(
             joinedAt: now,
             lapStartedAt: now,
             anchorDate: now,
-            anchorPosition: QueueEngine.newTailPosition(seed: seed),
+            anchorProgress: 0,
             lap: 1,
             totalCutIns: 0,
             totalSkipped: 0,
-            totalTaps: 0,
+            totalInteractions: 0,
             nextTicketNumber: 1,
             collected: []
         )
     }
 }
 
-/// 先頭にたどり着いた人が受け取った景品の控え。
+/// 受付で受け取った景品の控え。
 struct CollectedPrize: Codable, Equatable, Identifiable {
     let id: UUID
     /// 景品カタログ上の識別子。
@@ -50,8 +49,8 @@ struct CollectedPrize: Codable, Equatable, Identifiable {
     let ticketNumber: Int
     /// 何周目に受け取ったか。
     let lap: Int
-    /// 並んでいた日数。
-    let daysWaited: Int
+    /// 並んでいた時間。
+    let hoursWaited: Int
     /// 受け取った日の天候。
     let weather: QueueWeather
 }

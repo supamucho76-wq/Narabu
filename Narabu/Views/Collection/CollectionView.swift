@@ -120,7 +120,7 @@ private struct PrizeDetailView: View {
                     HStack {
                         Text("第\(String(format: "%04d", record.ticketNumber))号")
                             .foregroundStyle(AppTheme.stamp)
-                        Text("\(record.lap)周目・\(record.daysWaited)日・\(record.weather.label)")
+                        Text("\(record.lap)周目・\(record.hoursWaited)時間・\(record.weather.label)")
                             .foregroundStyle(AppTheme.inkSecondary)
                         Spacer()
                     }

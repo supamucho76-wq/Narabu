@@ -22,13 +22,6 @@ enum QueueEngine {
     /// 1時間あたりに割り込みが発生する確率。
     private static let cutInProbability = 0.03
 
-    /// 最後尾に並び直すときの人数。
-    ///
-    /// 1日16,000人ほど進むので、この人数だと先頭まで2週間ほどかかる。
-    static func newTailPosition(seed: Int) -> Int {
-        200_000 + Int(unitRandom(seed, salt: 0x7A11) * 60_000)
-    }
-
     /// start から end までに窓口が処理した人数。
     static func servedCount(from start: Date, to end: Date) -> Int {
         Int(servedCountExact(from: start, to: end))
@@ -46,11 +39,6 @@ enum QueueEngine {
         return total
     }
 
-    /// 次の1人が進むまでの進捗。0 から 1 の間を繰り返す。
-    static func advanceFraction(anchorDate: Date, at date: Date) -> Double {
-        let exact = servedCountExact(from: anchorDate, to: date)
-        return exact - exact.rounded(.down)
-    }
 
     /// start から end までに、課金して割り込んできた人数。
     ///
@@ -69,26 +57,28 @@ enum QueueEngine {
         return total
     }
 
-    /// 基準時点から見た、ある時刻での並び順。0 は先頭を意味する。
-    static func position(anchorPosition: Int, anchorDate: Date, at date: Date) -> Int {
+    /// 基準時点から見た、ある時刻での進捗。列の長さに達すると受付に着く。
+    ///
+    /// 割り込まれるとそのぶん後ろに戻される。
+    static func progress(anchorProgress: Int, anchorDate: Date, at date: Date) -> Int {
         let moved = servedCount(from: anchorDate, to: date)
         let pushedBack = cutInCount(from: anchorDate, to: date)
-        return max(0, anchorPosition - moved + pushedBack)
+        return min(QueueWorld.length, max(0, anchorProgress + moved - pushedBack))
     }
 
-    /// 先頭にたどり着くと予想される時刻。通知の予約と待ち時間の表示に使う。
-    static func estimatedArrival(anchorPosition: Int, anchorDate: Date) -> Date {
-        // 1日ずつ粗く進めてから、最後の1日を1時間刻みで詰める。
+    /// 受付にたどり着くと予想される時刻。通知の予約に使う。
+    static func estimatedArrival(anchorProgress: Int, anchorDate: Date) -> Date {
+        // 1時間ずつ粗く進めてから、最後の1時間を1分刻みで詰める。
         var cursor = anchorDate
-        while position(anchorPosition: anchorPosition, anchorDate: anchorDate, at: cursor) > 0 {
-            cursor = cursor.addingTimeInterval(86_400)
+        while progress(anchorProgress: anchorProgress, anchorDate: anchorDate, at: cursor) < QueueWorld.length {
+            cursor = cursor.addingTimeInterval(3_600)
             // 進みが遅すぎて終わらない場合の保険。
-            if cursor.timeIntervalSince(anchorDate) > 86_400 * 365 { return cursor }
+            if cursor.timeIntervalSince(anchorDate) > 86_400 * 30 { return cursor }
         }
 
-        var refined = cursor.addingTimeInterval(-86_400)
-        while position(anchorPosition: anchorPosition, anchorDate: anchorDate, at: refined) > 0 {
-            refined = refined.addingTimeInterval(3_600)
+        var refined = cursor.addingTimeInterval(-3_600)
+        while progress(anchorProgress: anchorProgress, anchorDate: anchorDate, at: refined) < QueueWorld.length {
+            refined = refined.addingTimeInterval(60)
         }
         return refined
     }
