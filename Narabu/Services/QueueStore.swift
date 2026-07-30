@@ -41,6 +41,13 @@ final class QueueStore {
 
     var peopleUntilNextStage: Int? { QueueWorld.peopleUntilNextStage(at: progress) }
 
+    /// 次にたどり着く場所の名前。
+    var nextStageName: String? {
+        let index = QueueWorld.stageIndex(at: progress)
+        guard index + 1 < QueueWorld.stages.count else { return nil }
+        return QueueWorld.stages[index + 1].name
+    }
+
     /// 屋根の下に入ると、天気は関係なくなる。
     var weather: QueueWeather { QueueWeather.onDay(of: now) }
 

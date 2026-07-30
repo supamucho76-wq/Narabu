@@ -7,14 +7,14 @@ import SwiftUI
 struct QueueWorldView: View {
     let anchorProgress: Int
     let anchorDate: Date
-    /// 前の人を叩いたときなどに一瞬だけ姿勢を崩す。
+    /// 前の人に絡んだ直後に一瞬だけ姿勢を崩す。
     let disturbance: Double
     let onTapPersonAhead: () -> Void
 
     /// 自分より後ろに見える人数。
-    private static let behindCount = 2
+    private static let behindCount = 3
     /// 自分より前に描く人数。これ以上奥は点になって見分けられない。
-    private static let aheadCount = 42
+    private static let aheadCount = 46
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
@@ -32,12 +32,9 @@ struct QueueWorldView: View {
         let progress = Int(progressExact)
         let remaining = QueueWorld.length - progress
         let time = date.timeIntervalSince1970
-
-        let horizonY = size.height * 0.34
-        let stage = QueueWorld.stage(at: progress)
+        let horizonY = size.height * 0.30
 
         drawScenery(
-            stage: stage,
             progress: progress,
             in: context,
             size: size,
@@ -59,7 +56,6 @@ struct QueueWorldView: View {
 
     /// 場所が切り替わる境目では、前の景色を薄く重ねて繋ぐ。
     private func drawScenery(
-        stage: WorldStage,
         progress: Int,
         in context: GraphicsContext,
         size: CGSize,
@@ -84,7 +80,7 @@ struct QueueWorldView: View {
         var layer = context
         layer.opacity = blend
         SceneryRenderer.draw(
-            kind: stage.kind,
+            kind: QueueWorld.stages[index].kind,
             in: layer,
             size: size,
             horizonY: horizonY,
@@ -102,7 +98,7 @@ struct QueueWorldView: View {
         remaining: Int,
         time: Double
     ) {
-        let baseY = size.height * 1.12
+        let baseY = size.height * 1.18
         let centerX = size.width / 2
         let slotCount = Double(Self.behindCount + Self.aheadCount)
 
@@ -114,7 +110,7 @@ struct QueueWorldView: View {
             guard scale > 0.001 else { continue }
 
             let feetY = baseY - (baseY - horizonY) * depth
-            let height = size.height * 0.30 * scale
+            let height = size.height * 0.52 * scale
             guard height > 3 else { continue }
 
             let isPlayer = slot == 0
@@ -122,49 +118,130 @@ struct QueueWorldView: View {
             guard queueIndex >= 0 else { continue }
 
             let person = isPlayer ? PersonFactory.player : PersonFactory.person(atQueueIndex: queueIndex)
-            let lateral = person.lateralOffset * size.width * 0.05 * scale
-            let feet = CGPoint(x: centerX + lateral, y: feetY)
 
-            // 叩かれた直後の前の人だけ、少し身をよじる。
+            // 列はまっすぐではなく、少しずつ左右にずれて厚みが出る。
+            let lateral = person.lateralOffset * size.width * 0.16 * scale
+            let feet = CGPoint(x: centerX + lateral, y: feetY)
+            let personHeight = height * person.heightScale
+
+            if isPlayer {
+                drawPlayerRing(in: context, feet: feet, height: personHeight, time: time)
+            }
+
+            // 絡まれた前の人だけ、一瞬身をよじる。
             let jolt = (slot == 1) ? disturbance : 0
-            let personTime = time + jolt * 6
 
             PersonRenderer.draw(
                 person,
                 in: context,
                 feet: feet,
-                height: height * person.heightScale,
-                time: personTime,
+                height: personHeight,
+                time: time + jolt * 6,
                 fade: fade(atDepth: depth)
             )
 
             if isPlayer {
-                drawPlayerMarker(in: context, feet: feet, height: height * person.heightScale)
+                drawPlayerLabel(in: context, feet: feet, height: personHeight)
+            } else if slot == 1, !person.remark.isEmpty {
+                drawRemark(person.remark, in: context, feet: feet, height: personHeight, size: size)
             }
         }
     }
 
     /// 奥ほど景色に溶けていく。
     private func fade(atDepth depth: Double) -> Double {
-        max(0.16, 1 - depth * 0.72)
+        max(0.18, 1 - depth * 0.7)
     }
 
-    private func drawPlayerMarker(in context: GraphicsContext, feet: CGPoint, height: Double) {
+    // MARK: - 自分
+
+    /// 足元の光る輪。画面の中で自分がどれかを一目でわからせる。
+    private func drawPlayerRing(in context: GraphicsContext, feet: CGPoint, height: Double, time: Double) {
+        let pulse = 1 + sin(time * 2.2) * 0.08
+        let w = height * 0.52 * pulse
+        let h = w * 0.3
+
+        for (index, opacity) in [0.30, 0.55].enumerated() {
+            let spread = 1 + Double(index) * 0.35
+            context.stroke(
+                Path(ellipseIn: CGRect(
+                    x: feet.x - w * spread / 2,
+                    y: feet.y - h * spread / 2,
+                    width: w * spread,
+                    height: h * spread
+                )),
+                with: .color(Color(red: 1.0, green: 0.86, blue: 0.34).opacity(opacity)),
+                lineWidth: max(1.5, height * 0.022)
+            )
+        }
+    }
+
+    private func drawPlayerLabel(in context: GraphicsContext, feet: CGPoint, height: Double) {
         let top = feet.y - height
-        let markerSize = height * 0.13
+        let markerSize = height * 0.11
 
         var arrow = Path()
-        arrow.move(to: CGPoint(x: feet.x - markerSize * 0.5, y: top - markerSize * 1.5))
-        arrow.addLine(to: CGPoint(x: feet.x + markerSize * 0.5, y: top - markerSize * 1.5))
-        arrow.addLine(to: CGPoint(x: feet.x, y: top - markerSize * 0.6))
+        arrow.move(to: CGPoint(x: feet.x - markerSize * 0.55, y: top - markerSize * 1.6))
+        arrow.addLine(to: CGPoint(x: feet.x + markerSize * 0.55, y: top - markerSize * 1.6))
+        arrow.addLine(to: CGPoint(x: feet.x, y: top - markerSize * 0.55))
         arrow.closeSubpath()
-        context.fill(arrow, with: .color(AppTheme.stamp))
+        context.fill(arrow, with: .color(Color(red: 1.0, green: 0.86, blue: 0.34)))
 
         context.draw(
             Text("あなた")
-                .font(.system(size: max(9, markerSize * 0.9), weight: .bold))
-                .foregroundColor(AppTheme.stamp),
-            at: CGPoint(x: feet.x, y: top - markerSize * 2.3)
+                .font(.system(size: max(10, markerSize * 0.95), weight: .heavy))
+                .foregroundColor(.white),
+            at: CGPoint(x: feet.x, y: top - markerSize * 2.5)
         )
+    }
+
+    // MARK: - 前の人の吹き出し
+
+    /// 前の人がぽつりと漏らす一言。進むたびに話し相手が変わる。
+    private func drawRemark(
+        _ text: String,
+        in context: GraphicsContext,
+        feet: CGPoint,
+        height: Double,
+        size: CGSize
+    ) {
+        let fontSize = max(11.0, min(15.0, height * 0.075))
+        let resolved = context.resolve(
+            Text(text)
+                .font(.system(size: fontSize, weight: .medium))
+                .foregroundColor(AppTheme.ink)
+        )
+        let textSize = resolved.measure(in: CGSize(width: size.width * 0.62, height: 200))
+
+        let padding = fontSize * 0.7
+        let bubbleWidth = textSize.width + padding * 2
+        let bubbleHeight = textSize.height + padding * 1.4
+        let centerX = min(max(feet.x, bubbleWidth / 2 + 8), size.width - bubbleWidth / 2 - 8)
+        let bottomY = feet.y - height * 1.08
+
+        let bubble = CGRect(
+            x: centerX - bubbleWidth / 2,
+            y: bottomY - bubbleHeight,
+            width: bubbleWidth,
+            height: bubbleHeight
+        )
+        context.fill(
+            Path(roundedRect: bubble, cornerRadius: fontSize * 0.6),
+            with: .color(.white.opacity(0.95))
+        )
+
+        var tail = Path()
+        tail.move(to: CGPoint(x: feet.x - fontSize * 0.35, y: bubble.maxY - 1))
+        tail.addLine(to: CGPoint(x: feet.x + fontSize * 0.35, y: bubble.maxY - 1))
+        tail.addLine(to: CGPoint(x: feet.x, y: bubble.maxY + fontSize * 0.5))
+        tail.closeSubpath()
+        context.fill(tail, with: .color(.white.opacity(0.95)))
+
+        context.draw(resolved, in: CGRect(
+            x: bubble.minX + padding,
+            y: bubble.minY + padding * 0.7,
+            width: textSize.width,
+            height: textSize.height
+        ))
     }
 }

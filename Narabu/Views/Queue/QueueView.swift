@@ -13,6 +13,7 @@ struct QueueView: View {
     @State private var reaction: String?
     @State private var reactionToken = 0
     @State private var disturbance: Double = 0
+    @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
     var body: some View {
         ZStack {
@@ -28,6 +29,16 @@ struct QueueView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
+
+            if !hasSeenIntro {
+                IntroView { hasSeenIntro = true }
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.4), value: hasSeenIntro)
+        .onChange(of: store.stage.name) { _, _ in
+            // 新しい場所に着いたことを知らせる。
+            show(reaction: store.stage.arrivalNote)
         }
         .sheet(isPresented: $isShowingCollection) {
             CollectionView()
@@ -59,17 +70,21 @@ struct QueueView: View {
     // MARK: - 上部
 
     private var topBar: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 5) {
             HStack(spacing: 10) {
-                Label(
-                    store.stage.kind.isSheltered ? store.stage.name : store.weather.label,
-                    systemImage: store.stage.kind.isSheltered ? "building.2" : store.weather.symbolName
-                )
+                Text(QueueWorld.destination)
+                    .font(.caption2.weight(.bold))
                 Spacer()
-                Text("\(store.hoursInCurrentLap)時間目")
+                Text(store.stage.name)
                 Text("\(store.state.lap)周目")
             }
             .font(.caption2.weight(.semibold))
+
+            if let untilNext = store.peopleUntilNextStage, let next = store.nextStageName {
+                Text("あと\(untilNext.formatted())人で\(next)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Color(red: 1.0, green: 0.88, blue: 0.5))
+            }
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("あと")
@@ -85,7 +100,7 @@ struct QueueView: View {
             progressBar
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.55), radius: 5, y: 1)
+        .shadow(color: .black.opacity(0.6), radius: 5, y: 1)
         .padding(.top, 4)
     }
 

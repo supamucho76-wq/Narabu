@@ -20,25 +20,6 @@ enum QueueWeather: String, Codable, CaseIterable {
         }
     }
 
-    var symbolName: String {
-        switch self {
-        case .clear: "sun.max"
-        case .cloudy: "cloud"
-        case .rain: "cloud.rain"
-        case .storm: "cloud.bolt.rain"
-        case .snow: "snowflake"
-        case .fog: "cloud.fog"
-        }
-    }
-
-    /// 並ぶのがつらい天気かどうか。称号の判定に使う。
-    var isHarsh: Bool {
-        switch self {
-        case .rain, .storm, .snow: true
-        case .clear, .cloudy, .fog: false
-        }
-    }
-
     /// その日の天気は日付だけで決まる。誰の列でも同じ空が広がっている。
     static func onDay(of date: Date) -> QueueWeather {
         let day = Int(floor(date.timeIntervalSince1970 / 86_400))

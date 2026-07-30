@@ -20,7 +20,8 @@ enum PersonRenderer {
         guard height > 3 else { return }
 
         var canvas = context
-        canvas.opacity = fade
+        // 亡霊は向こう側が透けて見える。
+        canvas.opacity = fade * (person.type == .ghost ? 0.55 : 1)
 
         // 遠くの人は輪郭しか見えないので、髪型や持ち物は描かない。
         let showsDetail = height > 20
@@ -94,8 +95,188 @@ enum PersonRenderer {
 
         guard showsDetail else { return }
 
-        drawHair(person, in: canvas, headRect: headRect)
+        if person.type == .ordinary {
+            drawHair(person, in: canvas, headRect: headRect)
+        } else {
+            drawTypeFeatures(person, in: canvas, headRect: headRect, torsoRect: torso, height: height)
+        }
         drawHeldItem(person, in: canvas, x: x, shoulderY: shoulderY, height: height, torsoWidth: torsoWidth)
+    }
+
+    // MARK: - 種類ごとの特徴
+
+    /// 宇宙人の触角、武士のちょんまげ、天使の輪など、その種類だとわかる部分。
+    private static func drawTypeFeatures(
+        _ person: QueuePerson,
+        in context: GraphicsContext,
+        headRect: CGRect,
+        torsoRect: CGRect,
+        height: Double
+    ) {
+        let w = headRect.width
+
+        switch person.type {
+        case .ordinary:
+            break
+
+        case .suit:
+            drawHair(person, in: context, headRect: headRect)
+            // 襟
+            var collar = Path()
+            collar.move(to: CGPoint(x: torsoRect.midX - w * 0.3, y: torsoRect.minY))
+            collar.addLine(to: CGPoint(x: torsoRect.midX, y: torsoRect.minY + height * 0.06))
+            collar.addLine(to: CGPoint(x: torsoRect.midX + w * 0.3, y: torsoRect.minY))
+            collar.closeSubpath()
+            context.fill(collar, with: .color(.white.opacity(0.85)))
+
+        case .baby:
+            drawHair(person, in: context, headRect: headRect)
+            // 頭の上の一本毛
+            context.stroke(
+                Path { path in
+                    path.move(to: CGPoint(x: headRect.midX, y: headRect.minY))
+                    path.addQuadCurve(
+                        to: CGPoint(x: headRect.midX + w * 0.24, y: headRect.minY - w * 0.34),
+                        control: CGPoint(x: headRect.midX + w * 0.3, y: headRect.minY - w * 0.06)
+                    )
+                },
+                with: .color(person.hair),
+                lineWidth: max(1, w * 0.09)
+            )
+
+        case .samurai:
+            let cap = CGRect(x: headRect.minX, y: headRect.minY, width: w, height: headRect.height * 0.55)
+            context.fill(
+                Path(roundedRect: cap, cornerSize: CGSize(width: w * 0.5, height: w * 0.4)),
+                with: .color(person.hair)
+            )
+            // ちょんまげ
+            context.fill(
+                Path(roundedRect: CGRect(x: headRect.midX - w * 0.09, y: headRect.minY - w * 0.28,
+                                         width: w * 0.18, height: w * 0.34),
+                     cornerRadius: w * 0.09),
+                with: .color(person.hair)
+            )
+
+        case .alien:
+            // 触角
+            for side in [-1.0, 1.0] {
+                let baseX = headRect.midX + side * w * 0.22
+                context.stroke(
+                    Path { path in
+                        path.move(to: CGPoint(x: baseX, y: headRect.minY + w * 0.1))
+                        path.addLine(to: CGPoint(x: baseX + side * w * 0.16, y: headRect.minY - w * 0.36))
+                    },
+                    with: .color(person.skin),
+                    lineWidth: max(1, w * 0.07)
+                )
+                context.fill(
+                    Path(ellipseIn: CGRect(x: baseX + side * w * 0.16 - w * 0.08,
+                                           y: headRect.minY - w * 0.44,
+                                           width: w * 0.16, height: w * 0.16)),
+                    with: .color(person.accent)
+                )
+            }
+
+        case .mascot:
+            // まるい耳
+            for side in [-1.0, 1.0] {
+                context.fill(
+                    Path(ellipseIn: CGRect(x: headRect.midX + side * w * 0.42 - w * 0.2,
+                                           y: headRect.minY - w * 0.1,
+                                           width: w * 0.4, height: w * 0.4)),
+                    with: .color(person.skin)
+                )
+            }
+
+        case .santa:
+            let hat = CGRect(x: headRect.minX - w * 0.06, y: headRect.minY - w * 0.1,
+                             width: w * 1.12, height: headRect.height * 0.5)
+            context.fill(
+                Path(roundedRect: hat, cornerSize: CGSize(width: w * 0.4, height: w * 0.36)),
+                with: .color(Color(red: 0.82, green: 0.16, blue: 0.16))
+            )
+            context.fill(
+                Path(ellipseIn: CGRect(x: headRect.midX + w * 0.3, y: headRect.minY - w * 0.3,
+                                       width: w * 0.24, height: w * 0.24)),
+                with: .color(.white)
+            )
+            // ひげ
+            context.fill(
+                Path(ellipseIn: CGRect(x: headRect.minX, y: headRect.maxY - w * 0.28,
+                                       width: w, height: w * 0.44)),
+                with: .color(.white.opacity(0.95))
+            )
+
+        case .maid:
+            drawHair(person, in: context, headRect: headRect)
+            // ヘッドドレス
+            context.fill(
+                Path(roundedRect: CGRect(x: headRect.minX + w * 0.1, y: headRect.minY - w * 0.06,
+                                         width: w * 0.8, height: w * 0.16),
+                     cornerRadius: w * 0.08),
+                with: .color(.white)
+            )
+            // エプロン
+            context.fill(
+                Path(CGRect(x: torsoRect.midX - torsoRect.width * 0.28, y: torsoRect.midY,
+                            width: torsoRect.width * 0.56, height: torsoRect.height * 0.5)),
+                with: .color(.white.opacity(0.9))
+            )
+
+        case .sumo:
+            // まわし
+            context.fill(
+                Path(CGRect(x: torsoRect.minX, y: torsoRect.maxY - torsoRect.height * 0.22,
+                            width: torsoRect.width, height: torsoRect.height * 0.24)),
+                with: .color(person.bottom)
+            )
+            context.fill(
+                Path(roundedRect: CGRect(x: headRect.midX - w * 0.1, y: headRect.minY - w * 0.2,
+                                         width: w * 0.2, height: w * 0.3),
+                     cornerRadius: w * 0.1),
+                with: .color(person.hair)
+            )
+
+        case .ghost:
+            break
+
+        case .angel:
+            // 光の輪
+            context.stroke(
+                Path(ellipseIn: CGRect(x: headRect.midX - w * 0.42, y: headRect.minY - w * 0.46,
+                                       width: w * 0.84, height: w * 0.28)),
+                with: .color(Color(red: 1.0, green: 0.92, blue: 0.42)),
+                lineWidth: max(1, w * 0.09)
+            )
+            // 翼
+            for side in [-1.0, 1.0] {
+                context.fill(
+                    Path(ellipseIn: CGRect(x: torsoRect.midX + side * torsoRect.width * 0.62 - torsoRect.width * 0.3,
+                                           y: torsoRect.minY,
+                                           width: torsoRect.width * 0.6,
+                                           height: torsoRect.height * 0.85)),
+                    with: .color(.white.opacity(0.75))
+                )
+            }
+
+        case .astronaut:
+            // ヘルメット
+            context.stroke(
+                Path(ellipseIn: headRect.insetBy(dx: -w * 0.14, dy: -w * 0.14)),
+                with: .color(.white.opacity(0.9)),
+                lineWidth: max(1, w * 0.12)
+            )
+            // 背中のタンク
+            context.fill(
+                Path(roundedRect: CGRect(x: torsoRect.midX - torsoRect.width * 0.22,
+                                         y: torsoRect.minY + torsoRect.height * 0.1,
+                                         width: torsoRect.width * 0.44,
+                                         height: torsoRect.height * 0.6),
+                     cornerRadius: torsoRect.width * 0.16),
+                with: .color(Color(red: 0.68, green: 0.70, blue: 0.76))
+            )
+        }
     }
 
     // MARK: - 髪と帽子

@@ -89,11 +89,26 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(QueueWorld.stage(at: 0).kind, .residential)
         XCTAssertEqual(QueueWorld.stage(at: 999).kind, .residential)
         XCTAssertEqual(QueueWorld.stage(at: 1_000).kind, .shopping)
-        XCTAssertEqual(QueueWorld.stage(at: 3_000).kind, .forest)
-        XCTAssertEqual(QueueWorld.stage(at: 5_000).kind, .snow)
-        XCTAssertEqual(QueueWorld.stage(at: 7_000).kind, .hotel)
-        XCTAssertEqual(QueueWorld.stage(at: 7_900).kind, .palace)
-        XCTAssertEqual(QueueWorld.stage(at: 8_000).kind, .reception)
+        XCTAssertEqual(QueueWorld.stage(at: 2_000).kind, .forest)
+        XCTAssertEqual(QueueWorld.stage(at: 3_000).kind, .sea)
+        XCTAssertEqual(QueueWorld.stage(at: 4_000).kind, .snow)
+        XCTAssertEqual(QueueWorld.stage(at: 5_000).kind, .desert)
+        XCTAssertEqual(QueueWorld.stage(at: 6_000).kind, .space)
+        XCTAssertEqual(QueueWorld.stage(at: 7_000).kind, .hell)
+        XCTAssertEqual(QueueWorld.stage(at: 7_600).kind, .heaven)
+        XCTAssertEqual(QueueWorld.stage(at: 8_000).kind, .ramen)
+    }
+
+    /// 場所ごとに並んでいる顔ぶれが変わらないと、景色が変わった実感が出ない。
+    func testCrowdChangesWithTheScenery() {
+        func types(around progress: Int) -> Set<PersonType> {
+            let index = QueueWorld.length - progress
+            return Set((0..<120).map { PersonFactory.person(atQueueIndex: index + $0).type })
+        }
+
+        XCTAssertTrue(types(around: 6_500).contains(.alien), "宇宙なのに宇宙人がいない")
+        XCTAssertTrue(types(around: 7_800).contains(.angel), "天国なのに天使がいない")
+        XCTAssertFalse(types(around: 500).contains(.angel), "住宅街に天使がうろうろしている")
     }
 
     func testEntryBlendRisesAfterEnteringAStage() {
