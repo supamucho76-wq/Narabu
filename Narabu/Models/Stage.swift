@@ -16,25 +16,31 @@ struct Stage: Identifiable, Equatable, Sendable {
 
     /// 進捗に対応する景色。
     func scene(atProgress progress: Int) -> SceneKind {
-        guard scenes.count > 1 else { return scenes[0] }
-        let span = max(1, queueLength / scenes.count)
-        let index = min(scenes.count - 1, progress / span)
-        return scenes[index]
+        scenes[sceneIndex(atProgress: progress)]
     }
 
     /// 今の景色に入ってからの進み具合。景色を繋ぐときの混ぜ具合に使う。
     func sceneBlend(atProgress progress: Int) -> Double {
         guard scenes.count > 1 else { return 1 }
-        let span = max(1, queueLength / scenes.count)
-        let entered = progress % span
+        let span = sceneSpan
+        let entered = max(0, progress) % span
         return min(1, Double(entered) / Double(max(1, span / 6)))
     }
 
     func previousScene(atProgress progress: Int) -> SceneKind? {
-        guard scenes.count > 1 else { return nil }
-        let span = max(1, queueLength / scenes.count)
-        let index = min(scenes.count - 1, progress / span)
+        let index = sceneIndex(atProgress: progress)
         return index > 0 ? scenes[index - 1] : nil
+    }
+
+    /// 景色ひとつぶんの人数。0除算にならないよう必ず1以上。
+    private var sceneSpan: Int {
+        max(1, queueLength / max(1, scenes.count))
+    }
+
+    /// 範囲外の進捗でも必ず有効な位置を返す。
+    private func sceneIndex(atProgress progress: Int) -> Int {
+        guard scenes.count > 1 else { return 0 }
+        return min(scenes.count - 1, max(0, progress) / sceneSpan)
     }
 }
 
@@ -102,8 +108,11 @@ enum StageCatalog {
     ]
 
     /// 一周したあとは、同じ行列がもっと長くなって戻ってくる。
+    ///
+    /// 壊れた保存データで番号が範囲外でも落ちないよう、必ず有効な位置に丸める。
     static func stage(number: Int, lap: Int) -> Stage {
-        let base = stages[(number - 1) % stages.count]
+        let index = ((number - 1) % stages.count + stages.count) % stages.count
+        let base = stages[index]
         guard lap > 1 else { return base }
 
         let growth = 1 + Double(lap - 1) * 0.5

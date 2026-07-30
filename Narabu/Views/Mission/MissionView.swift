@@ -9,9 +9,9 @@ struct MissionView: View {
 
     @State private var taps = 0
     @State private var deadline: Date?
-    @State private var gaugePosition: Double = 0
     @State private var gaugeTarget: Double = 0.5
-    @State private var gaugeRunning = true
+    /// 針を止めた時刻。止めるまでは nil。
+    @State private var stoppedAt: Date?
     @State private var sequenceStep = 0
     @State private var verdict: Bool?
     @State private var explanation: String?
@@ -61,8 +61,8 @@ struct MissionView: View {
     @ViewBuilder
     private var content: some View {
         switch mission.kind {
-        case .mash(let taps, let seconds):
-            mashGame(target: taps, seconds: seconds)
+        case .mash(let targetTaps, let seconds):
+            mashGame(target: targetTaps, seconds: seconds)
         case .timing(let width, let speed):
             timingGame(width: width, speed: speed)
         case .quiz(let question, let choices, let answer, let explanation):
@@ -89,8 +89,9 @@ struct MissionView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                .onChange(of: remaining) { _, value in
-                    if value <= 0, verdict == nil { finish(taps >= target) }
+                .task(id: remaining <= 0) {
+                    // 時間切れ。連打が足りていなければ失敗。
+                    if remaining <= 0, verdict == nil { finish(taps >= target) }
                 }
             }
 
@@ -111,13 +112,17 @@ struct MissionView: View {
 
     // MARK: - タイミング
 
+    /// 針の位置は時刻だけから決まるので、毎フレーム状態を書き換える必要がない。
+    private func needlePosition(at date: Date, speed: Double) -> Double {
+        let t = date.timeIntervalSince1970 * speed
+        // 端で折り返す往復運動。
+        return 1 - abs(t.truncatingRemainder(dividingBy: 2) - 1)
+    }
+
     private func timingGame(width: Double, speed: Double) -> some View {
         VStack(spacing: 16) {
             TimelineView(.animation) { timeline in
-                let t = timeline.date.timeIntervalSince1970 * speed
-                // 端で折り返す往復運動。
-                let raw = (t.truncatingRemainder(dividingBy: 2)) - 1
-                let position = gaugeRunning ? 1 - abs(raw) : gaugePosition
+                let position = needlePosition(at: stoppedAt ?? timeline.date, speed: speed)
 
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
@@ -133,16 +138,14 @@ struct MissionView: View {
                             .frame(width: 4)
                             .offset(x: geometry.size.width * position - 2)
                     }
-                    .onChange(of: position) { _, value in
-                        if gaugeRunning { gaugePosition = value }
-                    }
                 }
                 .frame(height: 34)
             }
 
             Button {
-                gaugeRunning = false
-                finish(abs(gaugePosition - gaugeTarget) <= width / 2)
+                let now = Date()
+                stoppedAt = now
+                finish(abs(needlePosition(at: now, speed: speed) - gaugeTarget) <= width / 2)
             } label: {
                 Text("止める")
                     .font(.title3.weight(.bold))
@@ -262,7 +265,7 @@ struct MissionView: View {
     private func finish(_ success: Bool) {
         guard verdict == nil else { return }
         verdict = success
-        gaugeRunning = false
+        if stoppedAt == nil { stoppedAt = Date() }
 
         UINotificationFeedbackGenerator().notificationOccurred(success ? .success : .warning)
 
