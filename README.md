@@ -48,10 +48,10 @@
 
 ## 未完了の外部設定
 
-- App Store Connectのアプリ登録
-- 消耗型商品「100人抜かす」の登録（¥160想定）
-- Apple Developer Team・署名設定
-- アプリアイコン（`Narabu/Resources/Assets.xcassets/AppIcon.appiconset` が空です）
+- ~~App Store Connectのアプリ登録~~ 完了（Bundle ID: `io.github.supamucho76wq.narabu`）
+- ~~Apple Developer Team・署名設定~~ 完了（Codemagicの`code-signing`グループに`CERTIFICATE_PRIVATE_KEY`を登録）
+- ~~アプリアイコン~~ 完了（1024pxを1枚。行列を上から見た図で、最後尾の赤が自分）
+- 消耗型商品「100人抜かす」の登録（¥160想定、Product ID: `io.github.supamucho76wq.narabu.skip100`）
 - プライバシーポリシー・サポートURLの公開
 
 ## 今後の予定
