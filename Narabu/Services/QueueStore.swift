@@ -75,8 +75,15 @@ final class QueueStore {
             guard let skill = SkillCatalog.skill(id: id) else { continue }
             parts.append(skill.effects(atLevel: level))
         }
+        // 集めた記念品の中に、説明のつかない効果を持つものが混ざっている。
+        parts.append(PrizeCatalog.hiddenEffects(ownedIDs: collectedPrizeIDs))
 
         return LoadoutEffects.combine(parts).clamped
+    }
+
+    /// これまでに受け取った記念品の種類。
+    var collectedPrizeIDs: Set<String> {
+        Set(state.collected.map(\.prizeID))
     }
 
     func ownedEquipment(in slot: EquipmentSlot) -> [Equipment] {
@@ -312,18 +319,27 @@ final class QueueStore {
         }
 
         let person = personAhead
+        let focusBefore = focus
         state.totalInteractions += 1
+        state.actionsSinceEvent += 1
         repeatCount = (action == lastAction) ? repeatCount + 1 : 0
         lastAction = action
+
+        spendFocus(FocusGauge.cost(for: action))
 
         var outcome = QueueActions.outcome(
             action: action,
             person: person,
             repeatCount: repeatCount,
             seed: state.totalInteractions &* 31 &+ remaining,
-            successBonus: effects.eventSuccessBonus,
-            comboBonus: comboBonus
+            successBonus: effects.eventSuccessBonus - FocusGauge.successPenalty(focusBefore),
+            comboBonus: comboBonus - FocusGauge.advancePenalty(focusBefore)
         )
+
+        // うまくいくと気持ちが乗って、集中が少し戻る。
+        if outcome.keepsCombo {
+            restoreFocus(6)
+        }
 
         if isFever, outcome.advance > 0 {
             outcome = ActionOutcome(
@@ -341,9 +357,62 @@ final class QueueStore {
         if outcome.grade == .great {
             state.coins += 3
         }
+        triggerEventIfNeeded()
         save()
 
         return outcome
+    }
+
+    // MARK: - 集中力
+
+    /// いまの集中力。時刻から回復ぶんを足して求めるので、閉じている間も戻る。
+    var focus: Double {
+        FocusGauge.current(anchor: state.focusAnchor, anchorDate: state.focusAnchorDate, now: now)
+    }
+
+    var focusRatio: Double { FocusGauge.ratio(focus) }
+
+    /// 集中が切れかけているか。画面で色を変える目安。
+    var isFocusLow: Bool { focusRatio < 0.35 }
+
+    private func spendFocus(_ amount: Double) {
+        state.focusAnchor = max(0, focus - amount)
+        state.focusAnchorDate = now
+    }
+
+    private func restoreFocus(_ amount: Double) {
+        state.focusAnchor = min(FocusGauge.maximum, focus + amount)
+        state.focusAnchorDate = now
+    }
+
+    // MARK: - 出来事
+
+    /// いま起きている出来事。選ぶまで消えない。
+    private(set) var pendingEvent: QueueEvent?
+
+    /// 行動を重ねると出来事が起きる。
+    private func triggerEventIfNeeded() {
+        guard pendingEvent == nil,
+              state.actionsSinceEvent >= QueueEventFactory.actionsPerEvent else { return }
+
+        pendingEvent = QueueEventFactory.make(
+            seed: state.totalInteractions &* 13 &+ state.stageNumber,
+            stage: stage
+        )
+        state.actionsSinceEvent = 0
+    }
+
+    /// 出来事の選択肢を選んだ結果を反映する。
+    func resolveEvent(_ choice: QueueEvent.Choice) {
+        state.coins += choice.coins
+        if let itemID = choice.itemID, GachaCatalog.item(id: itemID) != nil {
+            state.inventory[itemID, default: 0] += 1
+        }
+        if choice.advance != 0 {
+            moveAnchor(to: min(stage.queueLength, max(0, progress + choice.advance)))
+        }
+        pendingEvent = nil
+        save()
     }
 
     // MARK: - ミッション
@@ -367,6 +436,8 @@ final class QueueStore {
 
         state.coins += coins
         combo = success ? combo + 1 : 0
+        // ミッションをやり切ると気持ちが切り替わり、集中が大きく戻る。
+        restoreFocus(success ? 45 : 20)
 
         if advance > 0 {
             moveAnchor(to: min(stage.queueLength, progress + advance))

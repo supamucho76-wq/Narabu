@@ -47,6 +47,14 @@ struct QueueState: Codable, Equatable {
     /// 覚えたスキルと、その段階。
     var skillLevels: [String: Int]
 
+    // MARK: - 集中力と出来事
+
+    /// 基準時刻での集中力。今の値は時刻からの回復ぶんを足して求める。
+    var focusAnchor: Double
+    var focusAnchorDate: Date
+    /// 出来事が起きてからの行動回数。
+    var actionsSinceEvent: Int
+
     static func initial(now: Date = .now) -> QueueState {
         QueueState(
             joinedAt: now,
@@ -68,7 +76,10 @@ struct QueueState: Codable, Equatable {
             coins: 0,
             ownedEquipment: [],
             equipped: [:],
-            skillLevels: [:]
+            skillLevels: [:],
+            focusAnchor: FocusGauge.maximum,
+            focusAnchorDate: now,
+            actionsSinceEvent: 0
         )
     }
 
@@ -94,7 +105,10 @@ struct QueueState: Codable, Equatable {
         coins: Int,
         ownedEquipment: Set<String>,
         equipped: [String: String],
-        skillLevels: [String: Int]
+        skillLevels: [String: Int],
+        focusAnchor: Double,
+        focusAnchorDate: Date,
+        actionsSinceEvent: Int
     ) {
         self.joinedAt = joinedAt
         self.stageNumber = stageNumber
@@ -116,6 +130,9 @@ struct QueueState: Codable, Equatable {
         self.ownedEquipment = ownedEquipment
         self.equipped = equipped
         self.skillLevels = skillLevels
+        self.focusAnchor = focusAnchor
+        self.focusAnchorDate = focusAnchorDate
+        self.actionsSinceEvent = actionsSinceEvent
     }
 
     init(from decoder: Decoder) throws {
@@ -148,6 +165,9 @@ struct QueueState: Codable, Equatable {
         ownedEquipment = try container.decodeIfPresent(Set<String>.self, forKey: .ownedEquipment) ?? []
         equipped = try container.decodeIfPresent([String: String].self, forKey: .equipped) ?? [:]
         skillLevels = try container.decodeIfPresent([String: Int].self, forKey: .skillLevels) ?? [:]
+        focusAnchor = try container.decodeIfPresent(Double.self, forKey: .focusAnchor) ?? FocusGauge.maximum
+        focusAnchorDate = try container.decodeIfPresent(Date.self, forKey: .focusAnchorDate) ?? now
+        actionsSinceEvent = try container.decodeIfPresent(Int.self, forKey: .actionsSinceEvent) ?? 0
     }
 }
 

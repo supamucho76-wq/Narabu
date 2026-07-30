@@ -41,14 +41,25 @@ enum PrizeCatalog {
 
         // なぜか貴重
         Prize(id: "bottled-sigh", name: "誰かのため息（瓶詰め）", note: "開封すると失われます。", rarity: .inexplicable),
-        Prize(id: "first-love", name: "誰かの初恋の記憶（伝聞）", note: "本人から聞いた話ではありません。", rarity: .inexplicable),
-        Prize(id: "unrung-alarm", name: "一度も鳴らなかった目覚まし", note: "鳴る前に毎回起きたそうです。", rarity: .inexplicable),
+        Prize(id: "first-love", name: "誰かの初恋の記憶（伝聞）", note: "本人から聞いた話ではありません。", rarity: .inexplicable,
+              hiddenEffect: LoadoutEffects(eventSuccessBonus: 0.02)),
+        Prize(id: "unrung-alarm", name: "一度も鳴らなかった目覚まし", note: "鳴る前に毎回起きたそうです。", rarity: .inexplicable,
+              hiddenEffect: LoadoutEffects(gachaCooldownMultiplier: 0.95)),
         Prize(id: "sweet-potato-smell", name: "冷めた石焼き芋の匂い", note: "芋は含まれません。", rarity: .inexplicable),
         Prize(id: "bed-hair-photo", name: "知らない人の寝癖の写真", note: "本人の許可は得ています。", rarity: .inexplicable),
         Prize(id: "cut-hair", name: "誰かが散髪した髪（少量）", note: "衛生上の問題はありません。", rarity: .inexplicable),
-        Prize(id: "dead-button", name: "押しても何も起きないボタン", note: "配線はされています。", rarity: .inexplicable),
-        Prize(id: "one-second", name: "1秒", note: "すでに経過しました。", rarity: .inexplicable)
+        Prize(id: "dead-button", name: "押しても何も起きないボタン", note: "配線はされています。", rarity: .inexplicable,
+              hiddenEffect: LoadoutEffects(gachaLuckBonus: 0.05)),
+        Prize(id: "one-second", name: "1秒", note: "すでに経過しました。", rarity: .inexplicable,
+              hiddenEffect: LoadoutEffects(overtakeMultiplier: 1.05))
     ]
+
+    /// 手に入れた記念品が持っている、説明のつかない効果の合計。
+    static func hiddenEffects(ownedIDs: Set<String>) -> LoadoutEffects {
+        LoadoutEffects.combine(
+            all.filter { ownedIDs.contains($0.id) }.compactMap(\.hiddenEffect)
+        )
+    }
 
     static func prize(for id: String) -> Prize? {
         all.first { $0.id == id }

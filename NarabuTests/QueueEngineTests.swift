@@ -262,6 +262,93 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - 集中力
+
+    /// 減っても操作は止めない。成功しにくくなるだけ。
+    func testFocusNeverBlocksPlay() {
+        XCTAssertEqual(FocusGauge.successPenalty(FocusGauge.maximum), 0)
+        XCTAssertGreaterThan(FocusGauge.successPenalty(0), 0)
+        XCTAssertLessThan(FocusGauge.successPenalty(0), 0.4, "切れても勝てなくなるほど下げない")
+    }
+
+    /// 待たせる仕組みにしないため、短時間で戻ること。
+    func testFocusRefillsWithinAMinute() {
+        let refilled = FocusGauge.current(anchor: 0, anchorDate: noon, now: noon.addingTimeInterval(60))
+        XCTAssertEqual(refilled, FocusGauge.maximum, accuracy: 0.001)
+    }
+
+    func testFocusStaysWithinBounds() {
+        for seconds in stride(from: 0.0, through: 300, by: 11) {
+            let value = FocusGauge.current(anchor: 30, anchorDate: noon, now: noon.addingTimeInterval(seconds))
+            XCTAssertGreaterThanOrEqual(value, 0)
+            XCTAssertLessThanOrEqual(value, FocusGauge.maximum)
+        }
+    }
+
+    func testEveryActionCostsSomeFocus() {
+        for action in QueueAction.allCases {
+            XCTAssertGreaterThanOrEqual(FocusGauge.cost(for: action), 5)
+            XCTAssertLessThanOrEqual(FocusGauge.cost(for: action), 15)
+        }
+    }
+
+    // MARK: - 出来事
+
+    func testEventsAlwaysOfferAChoiceThatMatters() {
+        for seed in 0..<200 {
+            let event = QueueEventFactory.make(seed: seed, stage: StageCatalog.stages[4])
+            XCTAssertGreaterThanOrEqual(event.choices.count, 2, "選択肢が足りない")
+            XCTAssertFalse(event.situation.isEmpty)
+
+            // どの出来事にも、何かしら得のある選択肢が要る。
+            let hasUpside = event.choices.contains { $0.advance > 0 || $0.coins > 0 || $0.itemID != nil }
+            XCTAssertTrue(hasUpside, "\(event.title)に得のある選択肢がない")
+        }
+    }
+
+    func testEventItemsExist() {
+        for seed in 0..<200 {
+            let event = QueueEventFactory.make(seed: seed, stage: StageCatalog.stages[0])
+            for choice in event.choices {
+                if let id = choice.itemID {
+                    XCTAssertNotNil(GachaCatalog.item(id: id), "\(event.title)が存在しないアイテムを配ろうとしている")
+                }
+            }
+        }
+    }
+
+    // MARK: - 装備と記念品
+
+    func testEveryEquipmentTellsWhereItComesFrom() {
+        for equipment in EquipmentCatalog.all {
+            XCTAssertFalse(equipment.source.isEmpty, "\(equipment.name)の入手先が空")
+            XCTAssertFalse(equipment.detail.isEmpty)
+        }
+    }
+
+    func testSkillValueLabelsChangeWithLevel() {
+        for skill in SkillCatalog.all {
+            XCTAssertNotEqual(
+                skill.valueLabel(atLevel: 1),
+                skill.valueLabel(atLevel: 3),
+                "\(skill.name)の効果が段階で変わって見えない"
+            )
+        }
+    }
+
+    /// 隠し効果は、集めた記念品のぶんだけ効くこと。
+    func testHiddenPrizeEffectsAccumulate() {
+        let withEffects = PrizeCatalog.all.filter { $0.hiddenEffect != nil }
+        XCTAssertFalse(withEffects.isEmpty, "隠し効果を持つ記念品がひとつもない")
+
+        let none = PrizeCatalog.hiddenEffects(ownedIDs: [])
+        XCTAssertEqual(none.overtakeMultiplier, 1, accuracy: 0.001)
+
+        let all = PrizeCatalog.hiddenEffects(ownedIDs: Set(withEffects.map(\.id)))
+        XCTAssertGreaterThan(all.overtakeMultiplier, 1)
+        XCTAssertNotNil(withEffects.first?.hiddenEffectLabel)
+    }
+
     // MARK: - ガチャ
 
     func testDropRatesAddUpToOneHundredPercent() {

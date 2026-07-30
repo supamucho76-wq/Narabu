@@ -19,6 +19,34 @@ struct Skill: Identifiable, Equatable, Sendable {
     func effects(atLevel level: Int) -> LoadoutEffects {
         LoadoutEffects.combine(Array(repeating: perLevel, count: max(0, level)))
     }
+
+    /// その段階での効果を、読める言葉にする。
+    func valueLabel(atLevel level: Int) -> String {
+        let effects = effects(atLevel: level)
+
+        if perLevel.eventSuccessBonus != 0 {
+            return "相手が譲る確率 +\(percent(effects.eventSuccessBonus))"
+        }
+        if perLevel.overtakeMultiplier != 1 {
+            return "抜ける人数 ×\(number(effects.overtakeMultiplier))"
+        }
+        if perLevel.gachaLuckBonus != 0 {
+            return "高レアの出やすさ +\(percent(effects.gachaLuckBonus))"
+        }
+        if perLevel.gachaCooldownMultiplier != 1 {
+            let cut = 1 - effects.gachaCooldownMultiplier
+            return "ガチャの待ち時間 -\(percent(cut))"
+        }
+        return "—"
+    }
+
+    private func percent(_ value: Double) -> String {
+        value.formatted(.percent.precision(.fractionLength(0...1)))
+    }
+
+    private func number(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...2)))
+    }
 }
 
 enum SkillCatalog {

@@ -20,7 +20,9 @@ struct QueueView: View {
     @State private var activeMission: Mission?
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
-    private var isBusy: Bool { overtake != nil || activeMission != nil }
+    private var isBusy: Bool {
+        overtake != nil || activeMission != nil || store.pendingEvent != nil
+    }
 
     var body: some View {
         ZStack {
@@ -41,7 +43,12 @@ struct QueueView: View {
             .allowsHitTesting(!isBusy)
             .animation(.easeInOut(duration: 0.2), value: isBusy)
 
-            if let mission = activeMission {
+            if let event = store.pendingEvent {
+                EventView(event: event) { choice in
+                    store.resolveEvent(choice)
+                }
+                .transition(.opacity)
+            } else if let mission = activeMission {
                 MissionView(mission: mission) { success in
                     store.completeMission(mission, success: success)
                     activeMission = nil
@@ -129,6 +136,7 @@ struct QueueView: View {
             .font(.caption.weight(.medium))
 
             progressBar
+            focusBar
 
             if store.combo >= 3 {
                 comboBadge
@@ -152,6 +160,33 @@ struct QueueView: View {
             }
         }
         .frame(height: 4)
+    }
+
+    /// 集中力。切れても操作は止まらないが、成功しにくくなる。
+    private var focusBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 9))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.2))
+                    Capsule()
+                        .fill(store.isFocusLow
+                              ? Color(red: 0.94, green: 0.52, blue: 0.34)
+                              : Color(red: 0.52, green: 0.82, blue: 0.92))
+                        .frame(width: max(2, geometry.size.width * store.focusRatio))
+                        .animation(.easeOut(duration: 0.3), value: store.focusRatio)
+                }
+            }
+            .frame(height: 4)
+
+            if store.isFocusLow {
+                Text("集中が切れかけ")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color(red: 1.0, green: 0.72, blue: 0.56))
+            }
+        }
+        .foregroundStyle(.white.opacity(0.8))
     }
 
     /// ガチャの残り時間は隅に小さく。引ける時だけ色がつく。
