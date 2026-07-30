@@ -160,8 +160,8 @@ struct ItemSheet: View {
             Text("開発用")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Button("初回ガチャをリセット") {
-                store.resetGachaForDebugging()
+            Button("最初からやり直す（初回ガチャも戻る）") {
+                store.resetForDebugging()
                 dismiss()
             }
             .font(.caption)

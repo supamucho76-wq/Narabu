@@ -57,28 +57,28 @@ enum QueueEngine {
         return total
     }
 
-    /// 基準時点から見た、ある時刻での進捗。列の長さに達すると受付に着く。
+    /// 基準時点から見た、ある時刻での進捗。列の長さに達すると先頭に着く。
     ///
     /// 割り込まれるとそのぶん後ろに戻される。
-    static func progress(anchorProgress: Int, anchorDate: Date, at date: Date) -> Int {
+    static func progress(anchorProgress: Int, anchorDate: Date, at date: Date, limit: Int) -> Int {
         let moved = servedCount(from: anchorDate, to: date)
         let pushedBack = cutInCount(from: anchorDate, to: date)
-        return min(QueueWorld.length, max(0, anchorProgress + moved - pushedBack))
+        return min(limit, max(0, anchorProgress + moved - pushedBack))
     }
 
-    /// 受付にたどり着くと予想される時刻。通知の予約に使う。
-    static func estimatedArrival(anchorProgress: Int, anchorDate: Date) -> Date {
-        // 1時間ずつ粗く進めてから、最後の1時間を1分刻みで詰める。
+    /// 先頭にたどり着くと予想される時刻。通知の予約に使う。
+    static func estimatedArrival(anchorProgress: Int, anchorDate: Date, limit: Int) -> Date {
+        // 5分ずつ粗く進めてから、最後の5分を30秒刻みで詰める。
         var cursor = anchorDate
-        while progress(anchorProgress: anchorProgress, anchorDate: anchorDate, at: cursor) < QueueWorld.length {
-            cursor = cursor.addingTimeInterval(3_600)
+        while progress(anchorProgress: anchorProgress, anchorDate: anchorDate, at: cursor, limit: limit) < limit {
+            cursor = cursor.addingTimeInterval(300)
             // 進みが遅すぎて終わらない場合の保険。
-            if cursor.timeIntervalSince(anchorDate) > 86_400 * 30 { return cursor }
+            if cursor.timeIntervalSince(anchorDate) > 86_400 * 7 { return cursor }
         }
 
-        var refined = cursor.addingTimeInterval(-3_600)
-        while progress(anchorProgress: anchorProgress, anchorDate: anchorDate, at: refined) < QueueWorld.length {
-            refined = refined.addingTimeInterval(60)
+        var refined = cursor.addingTimeInterval(-300)
+        while progress(anchorProgress: anchorProgress, anchorDate: anchorDate, at: refined, limit: limit) < limit {
+            refined = refined.addingTimeInterval(30)
         }
         return refined
     }

@@ -38,6 +38,7 @@ struct OvertakeRun: Equatable {
 }
 
 struct QueueWorldView: View {
+    let stage: Stage
     let anchorProgress: Int
     let anchorDate: Date
     /// 前の人に絡んだ直後に一瞬だけ姿勢を崩す。
@@ -63,7 +64,7 @@ struct QueueWorldView: View {
 
     private func draw(in context: GraphicsContext, size: CGSize, date: Date) {
         let served = QueueEngine.servedCountExact(from: anchorDate, to: date)
-        let progressExact = min(Double(QueueWorld.length), Double(anchorProgress) + served)
+        let progressExact = min(Double(stage.queueLength), Double(anchorProgress) + served)
         let time = date.timeIntervalSince1970
         let horizonY = size.height * 0.30
 
@@ -72,14 +73,15 @@ struct QueueWorldView: View {
         let scroll: Double
         if let overtake {
             remaining = overtake.displayedRemaining(at: date)
-            scroll = Double(QueueWorld.length - remaining)
+            scroll = Double(stage.queueLength - remaining)
         } else {
-            remaining = QueueWorld.length - Int(progressExact)
+            remaining = stage.queueLength - Int(progressExact)
             scroll = progressExact
         }
+        let progress = stage.queueLength - remaining
 
         drawScenery(
-            progress: QueueWorld.length - remaining,
+            progress: progress,
             in: context,
             size: size,
             horizonY: horizonY,
@@ -92,6 +94,7 @@ struct QueueWorldView: View {
             size: size,
             horizonY: horizonY,
             remaining: remaining,
+            scene: stage.scene(atProgress: progress),
             time: time,
             date: date
         )
@@ -112,12 +115,11 @@ struct QueueWorldView: View {
         scroll: Double,
         time: Double
     ) {
-        let blend = QueueWorld.entryBlend(at: progress)
-        let index = QueueWorld.stageIndex(at: progress)
+        let blend = stage.sceneBlend(atProgress: progress)
 
-        if blend < 1, index > 0 {
+        if blend < 1, let previous = stage.previousScene(atProgress: progress) {
             SceneryRenderer.draw(
-                kind: QueueWorld.stages[index - 1].kind,
+                kind: previous,
                 in: context,
                 size: size,
                 horizonY: horizonY,
@@ -129,7 +131,7 @@ struct QueueWorldView: View {
         var layer = context
         layer.opacity = blend
         SceneryRenderer.draw(
-            kind: QueueWorld.stages[index].kind,
+            kind: stage.scene(atProgress: progress),
             in: layer,
             size: size,
             horizonY: horizonY,
@@ -145,6 +147,7 @@ struct QueueWorldView: View {
         size: CGSize,
         horizonY: Double,
         remaining: Int,
+        scene: SceneKind,
         time: Double,
         date: Date
     ) {
@@ -176,7 +179,9 @@ struct QueueWorldView: View {
             let queueIndex = remaining - slot
             guard queueIndex >= 0 else { continue }
 
-            let person = isPlayer ? PersonFactory.player : PersonFactory.person(atQueueIndex: queueIndex)
+            let person = isPlayer
+                ? PersonFactory.player
+                : PersonFactory.person(atQueueIndex: queueIndex, scene: scene)
 
             // 列はまっすぐではなく、少しずつ左右にずれて厚みが出る。
             let lateral = person.lateralOffset * size.width * 0.16 * scale
@@ -213,7 +218,7 @@ struct QueueWorldView: View {
             }
 
             if isPlayer {
-                drawPlayerLabel(in: context, feet: feet, height: personHeight)
+                drawPlayerLabel(in: context, feet: feet, height: personHeight, time: time)
             } else if slot == 1, overtake == nil, !person.remark.isEmpty {
                 drawRemark(person.remark, in: context, feet: feet, height: personHeight, size: size)
             }
@@ -289,23 +294,43 @@ struct QueueWorldView: View {
         }
     }
 
-    private func drawPlayerLabel(in context: GraphicsContext, feet: CGPoint, height: Double) {
-        let top = feet.y - height
-        let markerSize = height * 0.11
+    /// 頭のすぐ上に矢印とラベルを重ねる。少し浮き沈みさせて目に留まるようにする。
+    private func drawPlayerLabel(
+        in context: GraphicsContext,
+        feet: CGPoint,
+        height: Double,
+        time: Double
+    ) {
+        let markerSize = height * 0.1
+        let bob = sin(time * 2.4) * markerSize * 0.16
+        // 頭のてっぺんのすぐ上。離れると自分がどれか分からなくなる。
+        let tipY = feet.y - height - markerSize * 0.25 + bob
+        let marker = Color(red: 1.0, green: 0.84, blue: 0.28)
 
         var arrow = Path()
-        arrow.move(to: CGPoint(x: feet.x - markerSize * 0.55, y: top - markerSize * 1.6))
-        arrow.addLine(to: CGPoint(x: feet.x + markerSize * 0.55, y: top - markerSize * 1.6))
-        arrow.addLine(to: CGPoint(x: feet.x, y: top - markerSize * 0.55))
+        arrow.move(to: CGPoint(x: feet.x - markerSize * 0.62, y: tipY - markerSize))
+        arrow.addLine(to: CGPoint(x: feet.x + markerSize * 0.62, y: tipY - markerSize))
+        arrow.addLine(to: CGPoint(x: feet.x, y: tipY))
         arrow.closeSubpath()
-        context.fill(arrow, with: .color(Color(red: 1.0, green: 0.86, blue: 0.34)))
+        context.fill(arrow, with: .color(marker))
 
-        context.draw(
+        let label = context.resolve(
             Text("あなた")
-                .font(.system(size: max(10, markerSize * 0.95), weight: .heavy))
-                .foregroundColor(.white),
-            at: CGPoint(x: feet.x, y: top - markerSize * 2.5)
+                .font(.system(size: max(10, markerSize * 0.9), weight: .heavy))
+                .foregroundColor(Color(red: 0.16, green: 0.12, blue: 0.06))
         )
+        let measured = label.measure(in: CGSize(width: 200, height: 60))
+        let plate = CGRect(
+            x: feet.x - measured.width / 2 - 7,
+            y: tipY - markerSize - measured.height - 6,
+            width: measured.width + 14,
+            height: measured.height + 4
+        )
+        context.fill(
+            Path(roundedRect: plate, cornerRadius: plate.height * 0.35),
+            with: .color(marker)
+        )
+        context.draw(label, at: CGPoint(x: plate.midX, y: plate.midY))
     }
 
     // MARK: - 前の人の吹き出し

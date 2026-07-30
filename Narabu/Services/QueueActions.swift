@@ -97,8 +97,14 @@ enum QueueActions {
         "前の人が受付を諦めた。1人進んだ。"
     ]
 
-    static func outcome(action: QueueAction, totalInteractions: Int, seed: Int) -> ActionOutcome {
-        if QueueEngine.unitRandom(seed, salt: 0xD00F) < departureProbability {
+    /// - Parameter successBonus: 装備やスキルで上がる、相手が列を抜ける確率。
+    static func outcome(
+        action: QueueAction,
+        totalInteractions: Int,
+        seed: Int,
+        successBonus: Double = 0
+    ) -> ActionOutcome {
+        if QueueEngine.unitRandom(seed, salt: 0xD00F) < departureProbability + successBonus {
             return ActionOutcome(message: pick(departureMessages, seed: seed), didAdvance: true)
         }
 

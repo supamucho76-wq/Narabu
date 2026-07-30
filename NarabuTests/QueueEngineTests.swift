@@ -63,103 +63,109 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertLessThan(secondsPerPerson, 12)
     }
 
-    // MARK: - 進捗
-
-    func testProgressStopsAtTheReception() {
+    func testProgressStopsAtTheFrontOfTheStage() {
         let progress = QueueEngine.progress(
             anchorProgress: 0,
             anchorDate: noon,
-            at: noon.addingTimeInterval(86_400 * 7)
+            at: noon.addingTimeInterval(86_400),
+            limit: 30
         )
-        XCTAssertEqual(progress, QueueWorld.length)
+        XCTAssertEqual(progress, 30)
     }
 
-    func testProgressNeverGoesNegative() {
-        let progress = QueueEngine.progress(
-            anchorProgress: 0,
-            anchorDate: noon,
-            at: noon
-        )
-        XCTAssertGreaterThanOrEqual(progress, 0)
-    }
+    // MARK: - ステージ
 
-    func testReachesReceptionWithinADay() {
-        let arrival = QueueEngine.estimatedArrival(anchorProgress: 0, anchorDate: noon)
-        let hours = arrival.timeIntervalSince(noon) / 3_600
-        XCTAssertGreaterThan(hours, 6, "早すぎると並んだ実感がない")
-        XCTAssertLessThan(hours, 30, "遅すぎると忘れられる")
-    }
-
-    // MARK: - 世界
-
-    func testEveryStageIsReachableAndOrdered() {
+    func testStagesGetLongerAsYouGo() {
         var previous = 0
-        for stage in QueueWorld.stages where stage.untilProgress != .max {
-            XCTAssertGreaterThan(stage.untilProgress, previous, "場所の順番が逆転している")
-            previous = stage.untilProgress
+        for stage in StageCatalog.stages {
+            XCTAssertGreaterThan(stage.queueLength, previous, "\(stage.name)が前より短い")
+            previous = stage.queueLength
         }
-        XCTAssertEqual(previous, QueueWorld.length, "最後の場所が受付につながっていない")
     }
 
-    func testStageMatchesTheSpecifiedRanges() {
-        XCTAssertEqual(QueueWorld.stage(at: 0).kind, .residential)
-        XCTAssertEqual(QueueWorld.stage(at: 999).kind, .residential)
-        XCTAssertEqual(QueueWorld.stage(at: 1_000).kind, .shopping)
-        XCTAssertEqual(QueueWorld.stage(at: 2_000).kind, .forest)
-        XCTAssertEqual(QueueWorld.stage(at: 3_000).kind, .sea)
-        XCTAssertEqual(QueueWorld.stage(at: 4_000).kind, .snow)
-        XCTAssertEqual(QueueWorld.stage(at: 5_000).kind, .desert)
-        XCTAssertEqual(QueueWorld.stage(at: 6_000).kind, .space)
-        XCTAssertEqual(QueueWorld.stage(at: 7_000).kind, .hell)
-        XCTAssertEqual(QueueWorld.stage(at: 7_600).kind, .heaven)
-        XCTAssertEqual(QueueWorld.stage(at: 8_000).kind, .ramen)
+    func testStagesMatchTheSpecifiedSizes() {
+        let sizes = StageCatalog.stages.map(\.queueLength)
+        XCTAssertEqual(sizes, [10, 30, 80, 150, 300, 500, 1_000])
     }
 
-    /// 場所ごとに並んでいる顔ぶれが変わらないと、景色が変わった実感が出ない。
-    func testCrowdChangesWithTheScenery() {
-        func types(around progress: Int) -> Set<PersonType> {
-            let index = QueueWorld.length - progress
-            return Set((0..<120).map { PersonFactory.person(atQueueIndex: index + $0).type })
+    /// 最初のステージがすぐ終わらないと、遊び始めが退屈になる。
+    func testFirstStageClearsWithinMinutes() {
+        let first = StageCatalog.stages[0]
+        let arrival = QueueEngine.estimatedArrival(
+            anchorProgress: 0,
+            anchorDate: noon,
+            limit: first.queueLength
+        )
+        let minutes = arrival.timeIntervalSince(noon) / 60
+        XCTAssertLessThan(minutes, 5, "最初のステージに時間がかかりすぎる")
+    }
+
+    func testEveryStageHasAtLeastOneScene() {
+        for stage in StageCatalog.stages {
+            XCTAssertFalse(stage.scenes.isEmpty, "\(stage.name)に景色がない")
         }
-
-        XCTAssertTrue(types(around: 6_500).contains(.alien), "宇宙なのに宇宙人がいない")
-        XCTAssertTrue(types(around: 7_800).contains(.angel), "天国なのに天使がいない")
-        XCTAssertFalse(types(around: 500).contains(.angel), "住宅街に天使がうろうろしている")
     }
 
-    func testEntryBlendRisesAfterEnteringAStage() {
-        XCTAssertEqual(QueueWorld.entryBlend(at: 1_000), 0, accuracy: 0.001)
-        XCTAssertEqual(QueueWorld.entryBlend(at: 1_250), 1, accuracy: 0.001)
-        XCTAssertGreaterThan(QueueWorld.entryBlend(at: 1_125), 0.4)
+    /// 最終ステージだけは、いくつもの景色を通り抜ける。
+    func testFinalStageTravelsThroughManyScenes() {
+        let final = StageCatalog.stages[StageCatalog.count - 1]
+        XCTAssertGreaterThan(final.scenes.count, 3)
+        XCTAssertEqual(final.scene(atProgress: 0), final.scenes[0])
+        XCTAssertEqual(final.scene(atProgress: final.queueLength - 1), .ramen)
     }
 
-    // MARK: - 人
-
-    func testPeopleAreVariedButStable() {
-        let first = PersonFactory.person(atQueueIndex: 4_321)
-        let again = PersonFactory.person(atQueueIndex: 4_321)
-        XCTAssertEqual(first, again, "同じ人が見るたびに変わってはいけない")
-
-        let descriptors = Set((0..<400).map { PersonFactory.person(atQueueIndex: $0).descriptor })
-        XCTAssertGreaterThan(descriptors.count, 60, "並んでいる人が似たり寄ったりで飽きる")
+    func testLoopingMakesStagesLonger() {
+        let first = StageCatalog.stage(number: 1, lap: 1)
+        let second = StageCatalog.stage(number: 1, lap: 2)
+        XCTAssertGreaterThan(second.queueLength, first.queueLength)
+        XCTAssertEqual(second.name, first.name)
     }
 
-    // MARK: - アクション
+    // MARK: - 装備とスキル
 
-    func testInteractionsSometimesMakeThePersonAheadLeave() {
-        let departures = (0..<2_000).filter { seed in
-            QueueActions.outcome(action: .tapShoulder, totalInteractions: seed, seed: seed).didAdvance
-        }.count
-        XCTAssertGreaterThan(departures, 0, "まったく列を抜けないと絡む意味がない")
-        XCTAssertLessThan(departures, 200, "簡単に抜けすぎると並ぶ意味がなくなる")
+    func testEffectsCombineMultiplicativelyAndAdditively() {
+        let combined = LoadoutEffects.combine([
+            LoadoutEffects(overtakeMultiplier: 1.5, eventSuccessBonus: 0.04),
+            LoadoutEffects(overtakeMultiplier: 2.0, eventSuccessBonus: 0.02)
+        ])
+        XCTAssertEqual(combined.overtakeMultiplier, 3.0, accuracy: 0.001)
+        XCTAssertEqual(combined.eventSuccessBonus, 0.06, accuracy: 0.001)
     }
 
-    func testEachActionHasItsOwnReactions() {
-        for action in QueueAction.allCases {
-            let messages = Set((0..<60).map {
-                QueueActions.outcome(action: action, totalInteractions: 1, seed: $0).message
-            })
-            XCTAssertGreaterThan(messages.count, 2, "\(action.label)の反応が単調すぎる")
+    func testEffectsAreClampedSoTheyCannotBreakTheGame() {
+        let extreme = LoadoutEffects(
+            overtakeMultiplier: 999,
+            gachaCooldownMultiplier: 0.0001,
+            eventSuccessBonus: 5,
+            gachaLuckBonus: 9
+        ).clamped
+
+        XCTAssertLessThanOrEqual(extreme.overtakeMultiplier, 8)
+        XCTAssertGreaterThanOrEqual(extreme.gachaCooldownMultiplier, 0.2)
+        XCTAssertLessThanOrEqual(extreme.eventSuccessBonus, 0.35)
+        XCTAssertLessThanOrEqual(extreme.gachaLuckBonus, 1.0)
+    }
+
+    func testSkillGetsStrongerWithEachLevel() {
+        let pressure = SkillCatalog.skill(id: "pressure")!
+        let low = pressure.effects(atLevel: 1).overtakeMultiplier
+        let high = pressure.effects(atLevel: 5).overtakeMultiplier
+        XCTAssertGreaterThan(high, low)
+    }
+
+    func testUpgradeCostRisesWithLevel() {
+        XCTAssertLessThan(Skill.upgradeCost(currentLevel: 1), Skill.upgradeCost(currentLevel: 4))
+    }
+
+    /// 報酬で配る装備とスキルが、実在するものを指しているか。
+    func testStageRewardsReferToRealEquipmentAndSkills() {
+        for stage in StageCatalog.stages {
+            if let id = stage.reward.equipmentID {
+                XCTAssertNotNil(EquipmentCatalog.equipment(id: id), "\(stage.name)の装備が存在しない")
+            }
+            if let id = stage.reward.skillID {
+                XCTAssertNotNil(SkillCatalog.skill(id: id), "\(stage.name)のスキルが存在しない")
+            }
         }
     }
 
@@ -172,7 +178,7 @@ final class QueueEngineTests: XCTestCase {
 
     func testEveryItemIsReachableAndRoughlyMatchesItsRate() {
         var counts: [String: Int] = [:]
-        var generator = SeededGenerator(seed: 20_260_730)
+        var generator = SeededGenerator(seed: 20_260_731)
 
         let trials = 40_000
         for _ in 0..<trials {
@@ -186,6 +192,20 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    /// 運が上がると高レアが出やすくなるか。
+    func testLuckShiftsResultsTowardRarerItems() {
+        func rareShare(luck: Double) -> Double {
+            var generator = SeededGenerator(seed: 4_242)
+            let trials = 20_000
+            let rare = (0..<trials).filter { _ in
+                GachaMachine.draw(luck: luck, using: &generator).rarity.glowStrength > 0.5
+            }.count
+            return Double(rare) / Double(trials)
+        }
+
+        XCTAssertGreaterThan(rareShare(luck: 0.5), rareShare(luck: 0))
+    }
+
     func testCatalogHasTheFiveExpectedItems() {
         XCTAssertEqual(GachaCatalog.items.count, 5)
         XCTAssertEqual(GachaCatalog.item(id: "dash")?.people, 5)
@@ -197,24 +217,26 @@ final class QueueEngineTests: XCTestCase {
 
     /// 画面の中で数えるのではなく、保存した時刻から求めているかどうか。
     func testFreeGachaCooldownComesFromStoredTime() {
-        let drawnAt = noon
-        XCTAssertNil(
-            GachaMachine.remainingCooldown(lastDrawnAt: nil, now: noon),
-            "一度も引いていないなら引ける"
-        )
+        XCTAssertNil(GachaMachine.remainingCooldown(lastDrawnAt: nil, now: noon))
         XCTAssertEqual(
-            GachaMachine.remainingCooldown(lastDrawnAt: drawnAt, now: noon.addingTimeInterval(600)) ?? 0,
+            GachaMachine.remainingCooldown(lastDrawnAt: noon, now: noon.addingTimeInterval(600)) ?? 0,
             3_000,
             accuracy: 1
         )
+        XCTAssertNil(GachaMachine.remainingCooldown(lastDrawnAt: noon, now: noon.addingTimeInterval(3_600)))
         XCTAssertNil(
-            GachaMachine.remainingCooldown(lastDrawnAt: drawnAt, now: noon.addingTimeInterval(3_600)),
-            "1時間経ったら引ける"
-        )
-        XCTAssertNil(
-            GachaMachine.remainingCooldown(lastDrawnAt: drawnAt, now: noon.addingTimeInterval(86_400)),
+            GachaMachine.remainingCooldown(lastDrawnAt: noon, now: noon.addingTimeInterval(86_400)),
             "閉じている間に何時間経っていても引ける"
         )
+    }
+
+    func testCooldownShortensWithEquipment() {
+        let shortened = GachaMachine.remainingCooldown(
+            lastDrawnAt: noon,
+            now: noon,
+            multiplier: 0.5
+        ) ?? 0
+        XCTAssertEqual(shortened, 1_800, accuracy: 1)
     }
 
     func testCountdownLabelIsMinutesAndSeconds() {
@@ -227,15 +249,14 @@ final class QueueEngineTests: XCTestCase {
     func testOvertakeCounterRisesFromZeroToTheSkippedCount() {
         let run = OvertakeRun(
             item: GachaCatalog.item(id: "car")!,
-            fromRemaining: 4_000,
+            fromRemaining: 400,
             peopleSkipped: 100,
             startedAt: noon
         )
 
         XCTAssertEqual(run.countedSoFar(at: noon), 0)
         XCTAssertEqual(run.countedSoFar(at: noon.addingTimeInterval(run.duration)), 100)
-        XCTAssertEqual(run.displayedRemaining(at: noon), 4_000)
-        XCTAssertEqual(run.displayedRemaining(at: noon.addingTimeInterval(run.duration)), 3_900)
+        XCTAssertEqual(run.displayedRemaining(at: noon.addingTimeInterval(run.duration)), 300)
 
         var previous = 0
         for step in stride(from: 0.0, through: run.duration, by: 0.1) {
@@ -245,6 +266,8 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - 保存
+
     /// 保存した項目を増やしても、古い記録が読めなくなってはいけない。
     func testOldSaveDataStillLoads() throws {
         let legacy = """
@@ -252,7 +275,7 @@ final class QueueEngineTests: XCTestCase {
           "joinedAt": 760000000,
           "lapStartedAt": 760000000,
           "anchorDate": 760000000,
-          "anchorProgress": 1234,
+          "anchorProgress": 7000,
           "lap": 2,
           "totalCutIns": 3,
           "totalSkipped": 0,
@@ -263,19 +286,34 @@ final class QueueEngineTests: XCTestCase {
         """
         let state = try JSONDecoder().decode(QueueState.self, from: Data(legacy.utf8))
 
-        XCTAssertEqual(state.anchorProgress, 1_234)
-        XCTAssertEqual(state.lap, 2)
+        XCTAssertEqual(state.stageNumber, 1)
+        XCTAssertEqual(state.anchorProgress, 0, "数える対象が変わったので進捗は引き継がない")
+        XCTAssertEqual(state.totalInteractions, 7, "遊んだ記録は残る")
         XCTAssertTrue(state.inventory.isEmpty)
-        XCTAssertFalse(state.hasDrawnStarterGacha)
-        XCTAssertNil(state.lastFreeGachaAt)
+        XCTAssertEqual(state.coins, 0)
     }
 
-    // MARK: - 景品
+    // MARK: - 人と景品
 
-    func testPrizeForLapCannotBeRerolled() {
-        let first = PrizeCatalog.prize(forLap: 3, joinedAt: noon)
-        let again = PrizeCatalog.prize(forLap: 3, joinedAt: noon)
-        XCTAssertEqual(first, again)
+    func testPeopleAreVariedButStable() {
+        let first = PersonFactory.person(atQueueIndex: 431, scene: .shopping)
+        let again = PersonFactory.person(atQueueIndex: 431, scene: .shopping)
+        XCTAssertEqual(first, again, "同じ人が見るたびに変わってはいけない")
+
+        let descriptors = Set((0..<400).map {
+            PersonFactory.person(atQueueIndex: $0, scene: .shopping).descriptor
+        })
+        XCTAssertGreaterThan(descriptors.count, 60, "並んでいる人が似たり寄ったりで飽きる")
+    }
+
+    func testCrowdChangesWithTheScenery() {
+        func types(in scene: SceneKind) -> Set<PersonType> {
+            Set((0..<150).map { PersonFactory.person(atQueueIndex: $0, scene: scene).type })
+        }
+
+        XCTAssertTrue(types(in: .space).contains(.alien), "宇宙なのに宇宙人がいない")
+        XCTAssertTrue(types(in: .heaven).contains(.angel), "天国なのに天使がいない")
+        XCTAssertFalse(types(in: .residential).contains(.angel), "住宅街に天使がうろうろしている")
     }
 
     func testEveryPrizeIDIsUnique() {

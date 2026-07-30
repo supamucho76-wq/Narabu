@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// 列が通り抜けていく場所。
-///
-/// 並んでいる先はただのラーメン屋だが、列が長すぎて森も海も宇宙も地獄も通る。
+/// 列が通っている場所。ステージごとに、あるいはステージの中で移り変わる。
 enum SceneKind: String, Codable, CaseIterable, Sendable {
     case residential
     case shopping
     case forest
+    case park
+    case night
+    case hall
     case sea
     case snow
     case desert
@@ -14,74 +15,25 @@ enum SceneKind: String, Codable, CaseIterable, Sendable {
     case hell
     case heaven
     case ramen
-}
 
-/// 進捗の区間ごとの景色。
-struct WorldStage: Equatable, Sendable {
-    /// この場所が終わる進捗。
-    let untilProgress: Int
-    let name: String
-    /// 場所に着いたときに出る一言。
-    let arrivalNote: String
-    let kind: SceneKind
-}
-
-/// 8000人の列と、その道のり。
-enum QueueWorld {
-    /// 並んでいる先。
-    static let destination = "世界一号店 ラーメン"
-
-    /// 列に並んでいる人数。
-    static let length = 8_000
-
-    static let stages: [WorldStage] = [
-        WorldStage(untilProgress: 1_000, name: "住宅街",
-                   arrivalNote: "店はこの先らしい。", kind: .residential),
-        WorldStage(untilProgress: 2_000, name: "商店街",
-                   arrivalNote: "シャッターに「最後尾」の貼り紙がある。", kind: .shopping),
-        WorldStage(untilProgress: 3_000, name: "森",
-                   arrivalNote: "列は森に入った。まだ店は見えない。", kind: .forest),
-        WorldStage(untilProgress: 4_000, name: "海",
-                   arrivalNote: "列が海の上に続いている。誰も気にしていない。", kind: .sea),
-        WorldStage(untilProgress: 5_000, name: "雪国",
-                   arrivalNote: "気づけば雪国。ラーメンが恋しくなってきた。", kind: .snow),
-        WorldStage(untilProgress: 6_000, name: "砂漠",
-                   arrivalNote: "砂漠。スープの塩分が心配になる。", kind: .desert),
-        WorldStage(untilProgress: 7_000, name: "宇宙",
-                   arrivalNote: "宇宙。ラーメン屋の行列である。", kind: .space),
-        WorldStage(untilProgress: 7_600, name: "地獄",
-                   arrivalNote: "地獄。並んでいる人の顔ぶれは特に変わらない。", kind: .hell),
-        WorldStage(untilProgress: 8_000, name: "天国",
-                   arrivalNote: "天国。店はもうすぐらしい。", kind: .heaven),
-        WorldStage(untilProgress: .max, name: "世界一号店",
-                   arrivalNote: "着いた。暖簾が出ている。", kind: .ramen)
-    ]
-
-    static func stage(at progress: Int) -> WorldStage {
-        stages.first { progress < $0.untilProgress } ?? stages[stages.count - 1]
+    var name: String {
+        switch self {
+        case .residential: "住宅街"
+        case .shopping: "商店街"
+        case .forest: "並木道"
+        case .park: "遊園地"
+        case .night: "夜の会場前"
+        case .hall: "巨大会場"
+        case .sea: "海の上"
+        case .snow: "雪国"
+        case .desert: "砂漠"
+        case .space: "宇宙"
+        case .hell: "地獄"
+        case .heaven: "天国"
+        case .ramen: "店の前"
+        }
     }
 
-    static func stageIndex(at progress: Int) -> Int {
-        stages.firstIndex { progress < $0.untilProgress } ?? stages.count - 1
-    }
-
-    /// 今の場所に入ってからの進み具合。景色を繋ぐときの混ぜ具合に使う。
-    static func entryBlend(at progress: Int, over people: Int = 250) -> Double {
-        let index = stageIndex(at: progress)
-        guard index > 0 else { return 1 }
-        let entered = progress - stages[index - 1].untilProgress
-        return min(1, max(0, Double(entered) / Double(people)))
-    }
-
-    /// 次の景色に変わるまでの残り人数。
-    static func peopleUntilNextStage(at progress: Int) -> Int? {
-        let stage = stage(at: progress)
-        guard stage.untilProgress != .max else { return nil }
-        return stage.untilProgress - progress
-    }
-}
-
-extension SceneKind {
     /// 空の色。上と地平線ぎわの2色。
     var skyColors: (top: Color, bottom: Color) {
         switch self {
@@ -91,6 +43,12 @@ extension SceneKind {
             (Color(red: 0.66, green: 0.70, blue: 0.84), Color(red: 0.97, green: 0.86, blue: 0.68))
         case .forest:
             (Color(red: 0.48, green: 0.70, blue: 0.74), Color(red: 0.86, green: 0.90, blue: 0.78))
+        case .park:
+            (Color(red: 0.44, green: 0.68, blue: 0.92), Color(red: 0.98, green: 0.86, blue: 0.90))
+        case .night:
+            (Color(red: 0.08, green: 0.07, blue: 0.18), Color(red: 0.36, green: 0.18, blue: 0.42))
+        case .hall:
+            (Color(red: 0.58, green: 0.66, blue: 0.78), Color(red: 0.86, green: 0.86, blue: 0.88))
         case .sea:
             (Color(red: 0.28, green: 0.60, blue: 0.84), Color(red: 0.76, green: 0.90, blue: 0.94))
         case .snow:
@@ -114,6 +72,9 @@ extension SceneKind {
         case .residential: Color(red: 0.60, green: 0.59, blue: 0.57)
         case .shopping: Color(red: 0.54, green: 0.51, blue: 0.50)
         case .forest: Color(red: 0.42, green: 0.40, blue: 0.30)
+        case .park: Color(red: 0.66, green: 0.60, blue: 0.56)
+        case .night: Color(red: 0.22, green: 0.20, blue: 0.28)
+        case .hall: Color(red: 0.52, green: 0.52, blue: 0.54)
         case .sea: Color(red: 0.30, green: 0.52, blue: 0.66)
         case .snow: Color(red: 0.88, green: 0.90, blue: 0.93)
         case .desert: Color(red: 0.86, green: 0.72, blue: 0.46)
@@ -130,6 +91,9 @@ extension SceneKind {
         case .residential: Color(red: 0.80, green: 0.76, blue: 0.70)
         case .shopping: Color(red: 0.72, green: 0.44, blue: 0.36)
         case .forest: Color(red: 0.20, green: 0.40, blue: 0.26)
+        case .park: Color(red: 0.92, green: 0.42, blue: 0.46)
+        case .night: Color(red: 0.34, green: 0.24, blue: 0.48)
+        case .hall: Color(red: 0.66, green: 0.66, blue: 0.70)
         case .sea: Color(red: 0.90, green: 0.88, blue: 0.84)
         case .snow: Color(red: 0.72, green: 0.78, blue: 0.84)
         case .desert: Color(red: 0.52, green: 0.70, blue: 0.42)
@@ -139,5 +103,4 @@ extension SceneKind {
         case .ramen: Color(red: 0.68, green: 0.20, blue: 0.16)
         }
     }
-
 }

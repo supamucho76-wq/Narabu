@@ -54,9 +54,9 @@ enum PrizeCatalog {
         all.first { $0.id == id }
     }
 
-    /// 周回ごとに受け取る景品は決まっている。並び直しても引き直しはできない。
-    static func prize(forLap lap: Int, joinedAt: Date) -> Prize {
-        let seed = lap &* 7_919 &+ Int(joinedAt.timeIntervalSince1970) / 86_400
+    /// クリアごとに受け取る記念品は決まっている。やり直しても引き直しはできない。
+    static func prize(forLap clearCount: Int, joinedAt: Date) -> Prize {
+        let seed = clearCount &* 7_919 &+ Int(joinedAt.timeIntervalSince1970) / 86_400
         let index = Int(QueueEngine.unitRandom(seed, salt: 0x2B0F) * Double(all.count))
         return all[min(index, all.count - 1)]
     }

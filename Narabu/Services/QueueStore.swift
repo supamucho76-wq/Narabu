@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// 並んでいる状態のすべてを保持する。
+/// 遊んでいる状態のすべてを保持する。
 ///
 /// 進捗は保存せず、基準時刻からの経過で毎回計算する。
 /// アプリを消していた間も列は進んでいる。
@@ -21,71 +21,125 @@ final class QueueStore {
         save()
     }
 
-    // MARK: - 現在の状況
+    // MARK: - 挑戦中のステージ
 
-    /// 最後尾から何人ぶん進んだか。列の長さに達すると受付。
+    var stage: Stage {
+        StageCatalog.stage(number: state.stageNumber, lap: state.lap)
+    }
+
+    /// 最後尾から何人ぶん進んだか。
     var progress: Int {
-        QueueEngine.progress(
+        min(stage.queueLength, QueueEngine.progress(
             anchorProgress: state.anchorProgress,
             anchorDate: state.anchorDate,
-            at: now
-        )
+            at: now,
+            limit: stage.queueLength
+        ))
     }
 
-    /// 受付までの残り人数。
-    var remaining: Int { QueueWorld.length - progress }
+    /// 先頭までの残り人数。
+    var remaining: Int { stage.queueLength - progress }
 
-    var hasReachedReception: Bool { remaining <= 0 }
+    var hasClearedStage: Bool { remaining <= 0 }
 
-    var stage: WorldStage { QueueWorld.stage(at: progress) }
+    /// 今いる場所。
+    var scene: SceneKind { stage.scene(atProgress: progress) }
 
-    var peopleUntilNextStage: Int? { QueueWorld.peopleUntilNextStage(at: progress) }
-
-    /// 次にたどり着く場所の名前。
-    var nextStageName: String? {
-        let index = QueueWorld.stageIndex(at: progress)
-        guard index + 1 < QueueWorld.stages.count else { return nil }
-        return QueueWorld.stages[index + 1].name
+    /// このステージに並んでいる時間（分）。
+    var minutesInStage: Int {
+        max(0, Int(now.timeIntervalSince(state.stageStartedAt) / 60))
     }
-
-    /// 屋根の下に入ると、天気は関係なくなる。
-    var weather: QueueWeather { QueueWeather.onDay(of: now) }
 
     /// すぐ前に並んでいる人。
     var personAhead: QueuePerson {
-        PersonFactory.person(atQueueIndex: max(0, remaining - 1))
+        PersonFactory.person(atQueueIndex: max(0, remaining - 1), scene: scene)
     }
 
-    /// これまでに割り込まれた合計人数。基準時刻をまたいでも積み上がる。
+    /// これまでに割り込まれた合計人数。
     var totalCutIns: Int {
         state.totalCutIns + QueueEngine.cutInCount(from: state.anchorDate, to: now)
     }
 
-    /// 今の周回で並んでいる時間。
-    var hoursInCurrentLap: Int {
-        max(0, Int(now.timeIntervalSince(state.lapStartedAt) / 3_600))
+    // MARK: - 装備とスキル
+
+    /// 装備とスキルから集まる効果。すべての計算はこの値を見る。
+    var effects: LoadoutEffects {
+        var parts: [LoadoutEffects] = []
+
+        for (slot, id) in state.equipped {
+            guard EquipmentSlot(rawValue: slot) != nil,
+                  let equipment = EquipmentCatalog.equipment(id: id) else { continue }
+            parts.append(equipment.effects)
+        }
+        for (id, level) in state.skillLevels {
+            guard let skill = SkillCatalog.skill(id: id) else { continue }
+            parts.append(skill.effects(atLevel: level))
+        }
+
+        return LoadoutEffects.combine(parts).clamped
     }
 
-    /// この周回で受け取ることになっている景品。受付に着くまでは見せない。
-    var pendingPrize: Prize {
-        PrizeCatalog.prize(forLap: state.lap, joinedAt: state.joinedAt)
+    func ownedEquipment(in slot: EquipmentSlot) -> [Equipment] {
+        EquipmentCatalog.items(in: slot).filter { state.ownedEquipment.contains($0.id) }
+    }
+
+    func equippedItem(in slot: EquipmentSlot) -> Equipment? {
+        state.equipped[slot.rawValue].flatMap { EquipmentCatalog.equipment(id: $0) }
+    }
+
+    func equip(_ equipment: Equipment) {
+        guard state.ownedEquipment.contains(equipment.id) else { return }
+        state.equipped[equipment.slot.rawValue] = equipment.id
+        save()
+    }
+
+    func unequip(_ slot: EquipmentSlot) {
+        state.equipped.removeValue(forKey: slot.rawValue)
+        save()
+    }
+
+    /// 覚えたスキルとその段階。
+    var learnedSkills: [(skill: Skill, level: Int)] {
+        SkillCatalog.all.compactMap { skill in
+            let level = state.skillLevels[skill.id] ?? 0
+            return level > 0 ? (skill, level) : nil
+        }
+    }
+
+    func canUpgrade(_ skill: Skill) -> Bool {
+        let level = state.skillLevels[skill.id] ?? 0
+        guard level > 0, level < Skill.maxLevel else { return false }
+        return state.coins >= Skill.upgradeCost(currentLevel: level)
+    }
+
+    func upgrade(_ skill: Skill) {
+        guard canUpgrade(skill) else { return }
+        let level = state.skillLevels[skill.id] ?? 0
+        state.coins -= Skill.upgradeCost(currentLevel: level)
+        state.skillLevels[skill.id] = level + 1
+        save()
     }
 
     // MARK: - ガチャとアイテム
 
-    /// 初回のスタートダッシュ5連をまだ引いていないか。
     var needsStarterGacha: Bool { !state.hasDrawnStarterGacha }
 
     /// 無料ガチャが引けるまでの残り時間。引けるなら nil。
     var freeGachaCooldown: TimeInterval? {
-        GachaMachine.remainingCooldown(lastDrawnAt: state.lastFreeGachaAt, now: now)
+        GachaMachine.remainingCooldown(
+            lastDrawnAt: state.lastFreeGachaAt,
+            now: now,
+            multiplier: effects.gachaCooldownMultiplier
+        )
     }
 
     var canDrawFreeGacha: Bool {
         state.hasDrawnStarterGacha && freeGachaCooldown == nil
     }
 
-    /// 所持しているアイテム。カタログの並び順で返す。
+    /// チケットがあれば待たずに引ける。
+    var canDrawWithTicket: Bool { state.gachaTickets > 0 }
+
     var ownedItems: [(item: GachaItem, count: Int)] {
         GachaCatalog.items.compactMap { item in
             let count = state.inventory[item.id] ?? 0
@@ -95,11 +149,10 @@ final class QueueStore {
 
     func count(of item: GachaItem) -> Int { state.inventory[item.id] ?? 0 }
 
-    /// スタートダッシュ5連を引く。一度きり。
     func drawStarterGacha() -> [GachaItem] {
         guard needsStarterGacha else { return [] }
 
-        let results = GachaMachine.draw(count: GachaCatalog.starterDrawCount)
+        let results = GachaMachine.draw(count: GachaCatalog.starterDrawCount, luck: effects.gachaLuckBonus)
         add(results)
         state.hasDrawnStarterGacha = true
         state.lastFreeGachaAt = now
@@ -107,13 +160,22 @@ final class QueueStore {
         return results
     }
 
-    /// 1時間ごとの無料ガチャを引く。
     func drawFreeGacha() -> GachaItem? {
         guard canDrawFreeGacha else { return nil }
 
-        let result = GachaMachine.draw()
+        let result = GachaMachine.draw(luck: effects.gachaLuckBonus)
         add([result])
         state.lastFreeGachaAt = now
+        save()
+        return result
+    }
+
+    func drawWithTicket() -> GachaItem? {
+        guard state.gachaTickets > 0 else { return nil }
+
+        let result = GachaMachine.draw(luck: effects.gachaLuckBonus)
+        add([result])
+        state.gachaTickets -= 1
         save()
         return result
     }
@@ -125,13 +187,13 @@ final class QueueStore {
     }
 
     /// アイテムを使ってごぼう抜きする。実際に追い抜けた人数を返す。
-    ///
-    /// 店の前より先には進めないので、残り人数を超えるぶんは切り捨てる。
     @discardableResult
     func useItem(_ item: GachaItem) -> Int {
         guard count(of: item) > 0, remaining > 0 else { return 0 }
 
-        let skipped = min(item.people, remaining)
+        let boosted = Int((Double(item.people) * effects.overtakeMultiplier).rounded())
+        let skipped = min(boosted, remaining)
+
         state.inventory[item.id, default: 0] -= 1
         if state.inventory[item.id] == 0 {
             state.inventory.removeValue(forKey: item.id)
@@ -144,58 +206,105 @@ final class QueueStore {
     }
 
     #if DEBUG
-    /// 開発中に初回ガチャを何度も確認するための巻き戻し。
-    func resetGachaForDebugging() {
-        state.hasDrawnStarterGacha = false
-        state.lastFreeGachaAt = nil
-        state.inventory = [:]
+    /// 開発中に何度も確認するための巻き戻し。
+    func resetForDebugging() {
+        state = .initial(now: now)
         save()
     }
     #endif
 
-    // MARK: - 操作
+    // MARK: - ステージの進行
 
-    /// 受付で景品を受け取り、最後尾に並び直す。
+    /// ステージをクリアして報酬を受け取り、次のステージへ進む。
     @discardableResult
-    func claimPrize() -> CollectedPrize? {
-        guard hasReachedReception else { return nil }
+    func clearStage() -> StageClearResult? {
+        guard hasClearedStage else { return nil }
 
-        let prize = pendingPrize
-        let record = CollectedPrize(
-            id: UUID(),
-            prizeID: prize.id,
-            receivedAt: now,
-            ticketNumber: state.nextTicketNumber,
-            lap: state.lap,
-            hoursWaited: hoursInCurrentLap,
-            weather: weather
-        )
+        let cleared = stage
+        let isFirstTime = !state.clearedStages.contains(cleared.id)
+        let reward = cleared.reward
 
-        state.collected.append(record)
-        state.nextTicketNumber += 1
-        state.lap += 1
-        state.lapStartedAt = now
-        moveAnchor(to: 0)
+        state.coins += reward.coins
+        state.gachaTickets += reward.gachaTickets
+
+        var gainedEquipment: Equipment?
+        var gainedSkill: Skill?
+
+        if isFirstTime {
+            if let id = reward.equipmentID, let equipment = EquipmentCatalog.equipment(id: id) {
+                state.ownedEquipment.insert(equipment.id)
+                // 空いている部位なら、そのまま着けておく。
+                if state.equipped[equipment.slot.rawValue] == nil {
+                    state.equipped[equipment.slot.rawValue] = equipment.id
+                }
+                gainedEquipment = equipment
+            }
+            if let id = reward.skillID, let skill = SkillCatalog.skill(id: id) {
+                state.skillLevels[skill.id] = max(1, state.skillLevels[skill.id] ?? 0)
+                gainedSkill = skill
+            }
+        }
+
+        let souvenir = recordSouvenir(for: cleared)
+        state.clearedStages.insert(cleared.id)
+        advanceToNextStage()
         save()
 
-        return record
+        return StageClearResult(
+            stage: cleared,
+            coins: reward.coins,
+            gachaTickets: reward.gachaTickets,
+            equipment: gainedEquipment,
+            skill: gainedSkill,
+            souvenir: souvenir
+        )
     }
 
-    /// 前の人に何かする。ごくまれに相手が列を抜けて、1人ぶん進む。
+    /// クリアの記念にもらえる、値打ちのない品。図鑑に残る。
+    private func recordSouvenir(for stage: Stage) -> Prize {
+        let prize = PrizeCatalog.prize(forLap: state.nextTicketNumber, joinedAt: state.joinedAt)
+        state.collected.append(
+            CollectedPrize(
+                id: UUID(),
+                prizeID: prize.id,
+                receivedAt: now,
+                ticketNumber: state.nextTicketNumber,
+                stageNumber: stage.id,
+                minutesWaited: minutesInStage
+            )
+        )
+        state.nextTicketNumber += 1
+        return prize
+    }
+
+    private func advanceToNextStage() {
+        if state.stageNumber >= StageCatalog.count {
+            state.stageNumber = 1
+            state.lap += 1
+        } else {
+            state.stageNumber += 1
+        }
+        state.stageStartedAt = now
+        moveAnchor(to: 0)
+    }
+
+    // MARK: - 前の人への働きかけ
+
     func interactWithPersonAhead(_ action: QueueAction) -> ActionOutcome {
-        guard !hasReachedReception else {
-            return ActionOutcome(message: "受付の人に絡むのはやめておいた。", didAdvance: false)
+        guard !hasClearedStage else {
+            return ActionOutcome(message: "もう先頭なので、絡む相手がいない。", didAdvance: false)
         }
 
         state.totalInteractions += 1
         let outcome = QueueActions.outcome(
             action: action,
             totalInteractions: state.totalInteractions,
-            seed: state.totalInteractions &* 31 &+ remaining
+            seed: state.totalInteractions &* 31 &+ remaining,
+            successBonus: effects.eventSuccessBonus
         )
 
         if outcome.didAdvance {
-            moveAnchor(to: min(QueueWorld.length, progress + 1))
+            moveAnchor(to: min(stage.queueLength, progress + 1))
         }
         save()
 
@@ -205,14 +314,7 @@ final class QueueStore {
     /// 課金して前の人を追い抜く。
     func skipAhead(by people: Int) {
         state.totalSkipped += people
-        moveAnchor(to: min(QueueWorld.length, progress + people))
-        save()
-    }
-
-    /// 列を抜けて、最後尾からやり直す。
-    func leaveQueue() {
-        state.lapStartedAt = now
-        moveAnchor(to: 0)
+        moveAnchor(to: min(stage.queueLength, progress + people))
         save()
     }
 
@@ -255,7 +357,7 @@ final class QueueStore {
             )
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            // 保存できなくても列に並び続けられるほうが大事なので、握りつぶす。
+            // 保存できなくても遊び続けられるほうが大事なので、握りつぶす。
         }
     }
 
@@ -268,4 +370,14 @@ final class QueueStore {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("queue-state.json")
     }
+}
+
+/// ステージをクリアしたときに手に入ったもの。
+struct StageClearResult: Equatable {
+    let stage: Stage
+    let coins: Int
+    let gachaTickets: Int
+    let equipment: Equipment?
+    let skill: Skill?
+    let souvenir: Prize
 }

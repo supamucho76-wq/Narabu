@@ -11,11 +11,13 @@ struct GachaView: View {
         case starter
         /// 1時間ごとの1回。
         case free
+        /// チケットを使って引く1回。
+        case ticket
 
         var drawCount: Int {
             switch self {
             case .starter: GachaCatalog.starterDrawCount
-            case .free: 1
+            case .free, .ticket: 1
             }
         }
 
@@ -23,13 +25,21 @@ struct GachaView: View {
             switch self {
             case .starter: "スタートダッシュ5連ガチャ"
             case .free: "無料ガチャ"
+            case .ticket: "チケットガチャ"
             }
         }
 
         var drawLabel: String {
             switch self {
             case .starter: "5回引く"
-            case .free: "1回引く"
+            case .free, .ticket: "1回引く"
+            }
+        }
+
+        var costLabel: String {
+            switch self {
+            case .starter, .free: "無料"
+            case .ticket: "チケット1枚"
             }
         }
     }
@@ -114,7 +124,7 @@ struct GachaView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Text("無料")
+                Text(mode.costLabel)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.10))
                     .padding(.horizontal, 12)

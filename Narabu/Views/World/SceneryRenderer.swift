@@ -47,13 +47,86 @@ enum SceneryRenderer {
         switch kind {
         case .space:
             drawStars(in: context, size: size, horizonY: horizonY, time: time)
+        case .night:
+            drawStars(in: context, size: size, horizonY: horizonY, time: time)
+            drawStageLights(in: context, size: size, horizonY: horizonY, time: time)
         case .heaven:
             drawClouds(in: context, size: size, horizonY: horizonY, time: time)
         case .desert:
             drawSun(in: context, size: size, horizonY: horizonY)
+        case .park:
+            drawClouds(in: context, size: size, horizonY: horizonY, time: time)
+            drawFerrisWheel(in: context, size: size, horizonY: horizonY, time: time)
         default:
             break
         }
+    }
+
+    /// ライブ会場の空を撫でるサーチライト。
+    private static func drawStageLights(
+        in context: GraphicsContext,
+        size: CGSize,
+        horizonY: Double,
+        time: Double
+    ) {
+        for index in 0..<3 {
+            let sweep = sin(time * 0.5 + Double(index) * 2.1)
+            let originX = size.width * (0.2 + Double(index) * 0.3)
+            let tipX = originX + sweep * size.width * 0.4
+
+            var beam = Path()
+            beam.move(to: CGPoint(x: originX - 6, y: horizonY))
+            beam.addLine(to: CGPoint(x: originX + 6, y: horizonY))
+            beam.addLine(to: CGPoint(x: tipX + 40, y: 0))
+            beam.addLine(to: CGPoint(x: tipX - 40, y: 0))
+            beam.closeSubpath()
+
+            context.fill(
+                beam,
+                with: .linearGradient(
+                    Gradient(colors: [
+                        Color(red: 0.86, green: 0.62, blue: 1.0).opacity(0.30),
+                        .clear
+                    ]),
+                    startPoint: CGPoint(x: 0, y: horizonY),
+                    endPoint: .zero
+                )
+            )
+        }
+    }
+
+    /// 遊園地の観覧車。ゆっくり回る。
+    private static func drawFerrisWheel(
+        in context: GraphicsContext,
+        size: CGSize,
+        horizonY: Double,
+        time: Double
+    ) {
+        let center = CGPoint(x: size.width * 0.74, y: horizonY * 0.52)
+        let radius = size.width * 0.16
+
+        context.stroke(
+            Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius,
+                                   width: radius * 2, height: radius * 2)),
+            with: .color(.white.opacity(0.75)),
+            lineWidth: 2
+        )
+
+        for index in 0..<10 {
+            let angle = time * 0.18 + Double(index) * .pi / 5
+            let point = CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
+            context.fill(
+                Path(ellipseIn: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)),
+                with: .color(index.isMultiple(of: 2)
+                    ? Color(red: 0.96, green: 0.42, blue: 0.46)
+                    : Color(red: 0.98, green: 0.84, blue: 0.36))
+            )
+        }
+
+        context.fill(
+            Path(CGRect(x: center.x - 3, y: center.y, width: 6, height: horizonY - center.y)),
+            with: .color(.white.opacity(0.5))
+        )
     }
 
     private static func drawGround(
@@ -203,6 +276,55 @@ enum SceneryRenderer {
 
         case .forest:
             drawTree(in: context, x: x, baseY: baseY, unit: unit, variation: variation, color: color)
+
+        case .park:
+            // 屋台のテント
+            let w = unit * 0.3
+            let h = unit * (0.16 + variation * 0.08)
+            let body = CGRect(x: x - w / 2, y: baseY - h, width: w, height: h)
+            context.fill(Path(body), with: .color(.white.opacity(0.9)))
+
+            var roof = Path()
+            roof.move(to: CGPoint(x: body.minX - w * 0.14, y: body.minY))
+            roof.addLine(to: CGPoint(x: body.midX, y: body.minY - h * 0.6))
+            roof.addLine(to: CGPoint(x: body.maxX + w * 0.14, y: body.minY))
+            roof.closeSubpath()
+            context.fill(roof, with: .color(color))
+
+            // 風船
+            if variation > 0.6 {
+                let r = unit * 0.06
+                let float = sin(Double(seed) * 1.3) * unit * 0.03
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x + w * 0.4, y: baseY - h * 2.4 + float,
+                                           width: r, height: r * 1.2)),
+                    with: .color(Color(red: 0.98, green: 0.52, blue: 0.42))
+                )
+            }
+
+        case .night:
+            // 柵とスピーカー
+            let w = unit * 0.05
+            let h = unit * 0.16
+            context.fill(
+                Path(CGRect(x: x - w / 2, y: baseY - h, width: w, height: h)),
+                with: .color(color)
+            )
+            if variation > 0.7 {
+                let sw = unit * 0.14
+                context.fill(
+                    Path(CGRect(x: x - sw / 2, y: baseY - unit * 0.5, width: sw, height: unit * 0.5)),
+                    with: .color(Color(red: 0.16, green: 0.14, blue: 0.20))
+                )
+            }
+
+        case .hall:
+            // 巨大な建物の壁と、等間隔の柱
+            let w = unit * 0.34
+            let h = unit * (0.6 + variation * 0.3)
+            let body = CGRect(x: x - w / 2, y: baseY - h, width: w, height: h)
+            context.fill(Path(body), with: .color(color))
+            drawWindows(in: context, rect: body, rows: 3, columns: 4, scale: scale)
 
         case .sea:
             // 波と、ときどき浮かぶ浮き輪

@@ -64,6 +64,9 @@ enum PersonType: CaseIterable, Sendable {
         case (.angel, .heaven): 16
         case (.santa, .snow): 10
         case (.samurai, .forest): 6
+        case (.mascot, .park): 14
+        case (.baby, .park): 8
+        case (.maid, .night), (.mascot, .hall): 10
         case (.sumo, .ramen), (.sumo, .shopping): 5
         case (.alien, _), (.astronaut, _), (.ghost, _), (.angel, _): 0.4
         default: 2.2
@@ -223,8 +226,7 @@ enum PersonFactory {
     /// 列の何番目の人かを渡すと、その人の姿が決まる。
     ///
     /// 立っている場所によって顔ぶれが変わる。宇宙では宇宙人が、天国では天使が増える。
-    static func person(atQueueIndex index: Int) -> QueuePerson {
-        let scene = QueueWorld.stage(at: QueueWorld.length - index).kind
+    static func person(atQueueIndex index: Int, scene: SceneKind) -> QueuePerson {
         let type = pickType(index: index, scene: scene)
 
         return QueuePerson(
