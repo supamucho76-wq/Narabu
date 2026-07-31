@@ -214,31 +214,85 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
-    /// 残しているのは、操作と結果が直に結びつくものだけ。
-    func testOnlyDirectMissionsRemain() {
-        var seenTiming = false
-        var seenMash = false
+    /// 遊びの型が8つそろっていて、どれも実際に出てくること。
+    ///
+    /// 数分で「またこれか」にならないための下限。
+    func testAllEightMissionKindsAppear() {
+        var seen: Set<String> = []
 
-        for seed in 0..<300 {
-            switch MissionFactory.make(seed: seed, stage: StageCatalog.stages[3]).kind {
-            case .timing: seenTiming = true
-            case .mash: seenMash = true
+        for stage in StageCatalog.stages {
+            for seed in 0..<400 {
+                seen.insert(name(of: MissionFactory.make(seed: seed, stage: stage).kind))
             }
         }
 
-        XCTAssertTrue(seenTiming, "タイミングが出てこない")
-        XCTAssertTrue(seenMash, "連打が出てこない")
+        XCTAssertEqual(seen.count, 8, "出てこない遊びかたがある：\(seen.sorted())")
     }
 
-    /// タイミングは進むほど難しくなるが、狙えない幅にはしない。
-    func testTimingStaysPlayableOnLaterStages() {
+    /// その場所らしい遊びが多く出ること。
+    func testStagesFavourTheirOwnKindOfMission() {
+        func share(of kind: String, on stage: Stage) -> Double {
+            let hits = (0..<800).filter {
+                name(of: MissionFactory.make(seed: $0, stage: stage).kind) == kind
+            }.count
+            return Double(hits) / 800
+        }
+
+        let venue = StageCatalog.stages[4]
+        let convenience = StageCatalog.stages[0]
+
+        XCTAssertGreaterThan(share(of: "hide", on: venue), share(of: "hide", on: convenience),
+                             "係員の厳しい場所で、やり過ごしが増えていない")
+        XCTAssertGreaterThan(share(of: "align", on: venue), share(of: "align", on: convenience),
+                             "整理券が要る場所で、整理券の出番が増えていない")
+    }
+
+    /// 進むほど難しくなるが、手が届かない設定にはしないこと。
+    func testMissionsStayPlayableOnLaterStages() {
         for stage in StageCatalog.stages {
-            for seed in 0..<200 {
-                if case .timing(let width, let speed) = MissionFactory.make(seed: seed, stage: stage).kind {
+            for seed in 0..<300 {
+                switch MissionFactory.make(seed: seed, stage: stage).kind {
+                case .timing(let width, let speed):
                     XCTAssertGreaterThanOrEqual(width, 0.10, "\(stage.name)の当たり範囲が狭すぎる")
                     XCTAssertLessThanOrEqual(speed, 2.0, "\(stage.name)の針が速すぎる")
+                case .jump(let speed, let window):
+                    XCTAssertGreaterThanOrEqual(window, 0.10)
+                    XCTAssertLessThanOrEqual(speed, 1.5)
+                case .align(let tolerance):
+                    XCTAssertGreaterThanOrEqual(tolerance, 0.06)
+                case .mash(let taps, let seconds):
+                    XCTAssertLessThanOrEqual(Double(taps) / seconds, 4.5, "連打が速すぎる")
+                case .swipe(let count, let seconds):
+                    XCTAssertLessThanOrEqual(Double(count) / seconds, 1.6, "スワイプが忙しすぎる")
+                case .dodge(let seconds), .escalator(let seconds), .hide(let seconds):
+                    XCTAssertGreaterThan(seconds, 3)
+                    XCTAssertLessThanOrEqual(seconds, 12, "1回が長すぎてテンポが死ぬ")
                 }
             }
+        }
+    }
+
+    /// どの遊びにも、何をすればいいかの一言があること。
+    func testEveryMissionExplainsItself() {
+        for stage in StageCatalog.stages {
+            for seed in 0..<200 {
+                let mission = MissionFactory.make(seed: seed, stage: stage)
+                XCTAssertFalse(mission.title.isEmpty)
+                XCTAssertFalse(mission.instruction.isEmpty)
+            }
+        }
+    }
+
+    private func name(of kind: Mission.Kind) -> String {
+        switch kind {
+        case .timing: "timing"
+        case .mash: "mash"
+        case .swipe: "swipe"
+        case .jump: "jump"
+        case .dodge: "dodge"
+        case .escalator: "escalator"
+        case .hide: "hide"
+        case .align: "align"
         }
     }
 
