@@ -61,7 +61,7 @@ struct VoiceControl: View {
                 Label("無言", systemImage: "hand.raised.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
-                    .frame(width: 96, minHeight: 42)
+                    .frame(minWidth: 96, maxWidth: 96, minHeight: 42)
                     .background(AppTheme.paper.opacity(0.94))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
