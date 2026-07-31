@@ -14,7 +14,6 @@ struct MissionView: View {
     @State private var stoppedAt: Date?
     @State private var sequenceStep = 0
     @State private var verdict: Bool?
-    @State private var explanation: String?
 
     var body: some View {
         ZStack {
@@ -65,10 +64,6 @@ struct MissionView: View {
             mashGame(target: targetTaps, seconds: seconds)
         case .timing(let width, let speed):
             timingGame(width: width, speed: speed)
-        case .quiz(let question, let choices, let answer, let explanation):
-            choiceGame(prompt: question, choices: choices, answer: answer, explanation: explanation)
-        case .memory(let prompt, let choices, let answer):
-            choiceGame(prompt: prompt, choices: choices, answer: answer, explanation: nil)
         case .sequence(let order):
             sequenceGame(order: order)
         }
@@ -156,30 +151,6 @@ struct MissionView: View {
         }
     }
 
-    // MARK: - 2択・記憶
-
-    private func choiceGame(prompt: String, choices: [String], answer: Int, explanation: String?) -> some View {
-        VStack(spacing: 14) {
-            Text(prompt)
-                .font(.subheadline.weight(.medium))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(AppTheme.ink)
-
-            ForEach(Array(choices.enumerated()), id: \.offset) { index, choice in
-                Button {
-                    self.explanation = explanation
-                    finish(index == answer)
-                } label: {
-                    Text(choice)
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.ink)
-            }
-        }
-    }
-
     // MARK: - 順番押し
 
     private func sequenceGame(order: [QueueAction]) -> some View {
@@ -239,13 +210,6 @@ struct MissionView: View {
                 Text("次のミッションに切り替わります")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-
-            if let explanation {
-                Text(explanation)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
             }
         }
     }

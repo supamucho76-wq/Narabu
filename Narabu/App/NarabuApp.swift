@@ -10,6 +10,7 @@ struct NarabuApp: App {
     @State private var queue = QueueStore()
     @State private var purchases = PurchaseStore()
     @State private var sound = SoundPlayer()
+    @State private var voice = VoiceRecognizer()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -18,6 +19,7 @@ struct NarabuApp: App {
                 .environment(queue)
                 .environment(purchases)
                 .environment(sound)
+                .environment(voice)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

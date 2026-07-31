@@ -28,6 +28,10 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>「すみません」「どけ」などの声で行列を進むために、ボタンを押している間だけマイクを使います。録音した音声は保存も送信もしません。</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>話しかけた言葉を聞き分けて、行列の進みかたを変えるために使います。聞き取りは端末の中だけで行い、内容は保存しません。</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
 </dict>

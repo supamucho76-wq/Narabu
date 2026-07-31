@@ -72,6 +72,8 @@ struct QueueWorldView: View {
     let overtake: OvertakeRun?
     /// 直前に前進した時刻と人数。少しのあいだカメラが前に寄る。
     let advancePulse: AdvancePulse?
+    /// 画面に別の吹き出しが出ているあいだは、前の人を黙らせる。
+    let silencesRemark: Bool
     let onTapPersonAhead: () -> Void
 
     /// 自分より後ろに見える人数。
@@ -253,7 +255,7 @@ struct QueueWorldView: View {
 
             if isPlayer {
                 drawPlayerLabel(in: context, feet: feet, height: personHeight, time: time)
-            } else if slot == 1, overtake == nil, !person.remark.isEmpty {
+            } else if slot == 1, overtake == nil, !silencesRemark, !person.remark.isEmpty {
                 drawRemark(person.remark, in: context, feet: feet, height: personHeight, size: size)
             }
         }

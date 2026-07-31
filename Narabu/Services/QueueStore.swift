@@ -357,6 +357,10 @@ final class QueueStore {
         if outcome.grade == .great {
             state.coins += 3
         }
+        // 丁寧なやりとりが続くと、周りの警戒がほぐれる。
+        if outcome.keepsCombo, action == .cheer || action == .highFive || action == .talk {
+            changeAlert(by: -5)
+        }
         triggerEventIfNeeded()
         save()
 
@@ -383,6 +387,70 @@ final class QueueStore {
     private func restoreFocus(_ amount: Double) {
         state.focusAnchor = min(FocusGauge.maximum, focus + amount)
         state.focusAnchorDate = now
+    }
+
+    // MARK: - 警戒度
+
+    /// いまの警戒度。時間が経つと落ち着く。
+    var alertness: Double {
+        Alertness.current(anchor: state.alertAnchor, anchorDate: state.alertAnchorDate, now: now)
+    }
+
+    var alertLevel: Alertness.Level { Alertness.level(alertness) }
+
+    private func changeAlert(by delta: Double) {
+        state.alertAnchor = min(Alertness.maximum, max(0, alertness + delta))
+        state.alertAnchorDate = now
+    }
+
+    // MARK: - 声で押し通す
+
+    /// 直前に使った言葉と、その連続回数。
+    private(set) var lastPhrase: VoicePhrase?
+    private(set) var phraseRepeatCount = 0
+
+    /// 声、またはタップの強さで前へ押し通す。
+    ///
+    /// 声が出せない場所でも不利にならないよう、どちらも同じ計算を通す。
+    func breakThrough(phrase: VoicePhrase, volume: VoiceVolume) -> BreakthroughOutcome {
+        guard !hasClearedStage else {
+            return BreakthroughOutcome(
+                phrase: phrase, volume: volume, succeeded: false, advance: 0,
+                alertDelta: 0, message: "もう先頭なので、声をかける相手がいない。",
+                caughtByGuard: false
+            )
+        }
+
+        phraseRepeatCount = (phrase == lastPhrase) ? phraseRepeatCount + 1 : 0
+        lastPhrase = phrase
+        state.totalInteractions += 1
+        state.actionsSinceEvent += 1
+
+        let outcome = BreakthroughResolver.resolve(
+            phrase: phrase,
+            volume: volume,
+            person: personAhead,
+            alertness: alertness,
+            repeatCount: phraseRepeatCount,
+            remaining: remaining,
+            seed: state.totalInteractions &* 37 &+ remaining
+        )
+
+        changeAlert(by: outcome.alertDelta)
+        combo = outcome.succeeded ? combo + 1 : 0
+
+        if outcome.advance != 0 {
+            moveAnchor(to: min(stage.queueLength, max(0, progress + outcome.advance)))
+        }
+        if outcome.succeeded {
+            state.totalSkipped += outcome.advance
+            state.coins += outcome.advance
+        }
+
+        triggerEventIfNeeded()
+        save()
+
+        return outcome
     }
 
     // MARK: - 出来事

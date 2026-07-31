@@ -160,37 +160,21 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    /// 残しているのは、指を動かして数秒で終わるものだけ。
     func testAllMissionKindsCanAppear() {
         var seenMash = false
         var seenTiming = false
-        var seenQuiz = false
-        var seenMemory = false
         var seenSequence = false
 
         for seed in 0..<300 {
             switch MissionFactory.make(seed: seed, stage: StageCatalog.stages[3]).kind {
             case .mash: seenMash = true
             case .timing: seenTiming = true
-            case .quiz: seenQuiz = true
-            case .memory: seenMemory = true
             case .sequence: seenSequence = true
             }
         }
 
-        XCTAssertTrue(seenMash && seenTiming && seenQuiz && seenMemory && seenSequence,
-                      "出てこないミッションの種類がある")
-    }
-
-    func testQuizAnswersPointToRealChoices() {
-        for seed in 0..<300 {
-            let mission = MissionFactory.make(seed: seed, stage: StageCatalog.stages[0])
-            if case .quiz(_, let choices, let answer, _) = mission.kind {
-                XCTAssertTrue(choices.indices.contains(answer), "正解の番号が選択肢の外にある")
-            }
-            if case .memory(_, let choices, let answer) = mission.kind {
-                XCTAssertTrue(choices.indices.contains(answer), "正解の番号が選択肢の外にある")
-            }
-        }
+        XCTAssertTrue(seenMash && seenTiming && seenSequence, "出てこないミッションの種類がある")
     }
 
     func testEveryStageHasAtLeastOneScene() {
@@ -347,6 +331,105 @@ final class QueueEngineTests: XCTestCase {
         let all = PrizeCatalog.hiddenEffects(ownedIDs: Set(withEffects.map(\.id)))
         XCTAssertGreaterThan(all.overtakeMultiplier, 1)
         XCTAssertNotNil(withEffects.first?.hiddenEffectLabel)
+    }
+
+    // MARK: - ボイス突破
+
+    func testPhraseMatchingPrefersTheLongerWording() {
+        XCTAssertEqual(VoicePhrase.match(in: "前に行かせてください"), .maeni)
+        XCTAssertEqual(VoicePhrase.match(in: "すみません、通してください"), .tooshite)
+        XCTAssertEqual(VoicePhrase.match(in: "どけ"), .doke)
+        XCTAssertEqual(VoicePhrase.match(in: "おい"), .oi)
+    }
+
+    /// 周りの音を拾っただけで勝手に発動しないこと。
+    func testUnrelatedSpeechDoesNotTriggerAnything() {
+        XCTAssertNil(VoicePhrase.match(in: ""))
+        XCTAssertNil(VoicePhrase.match(in: "今日はいい天気ですね"))
+        XCTAssertNil(VoicePhrase.match(in: "ラーメン食べたい"))
+    }
+
+    func testPoliteWordsCalmTheCrowdAndRoughOnesDoNot() {
+        XCTAssertLessThan(VoicePhrase.sumimasen.alertCost, 0, "丁寧に言っても警戒が下がらない")
+        XCTAssertGreaterThan(VoicePhrase.doke.alertCost, 0)
+        XCTAssertTrue(VoicePhrase.doke.isRough)
+        XCTAssertFalse(VoicePhrase.sumimasen.isRough)
+    }
+
+    func testRoughWordsMoveMorePeopleButRiskMore() {
+        XCTAssertGreaterThan(
+            VoicePhrase.doke.advanceRange.upperBound,
+            VoicePhrase.sumimasen.advanceRange.upperBound,
+            "強く言っても得がない"
+        )
+        XCTAssertGreaterThan(
+            VoicePhrase.sumimasen.baseChance,
+            VoicePhrase.doke.baseChance,
+            "丁寧に言うほうが通りやすくないと選ぶ意味がない"
+        )
+    }
+
+    func testVolumeIsClassifiedAcrossTheRange() {
+        XCTAssertEqual(VoiceVolume.of(0.05), .quiet)
+        XCTAssertEqual(VoiceVolume.of(0.3), .normal)
+        XCTAssertEqual(VoiceVolume.of(0.6), .loud)
+        XCTAssertEqual(VoiceVolume.of(0.95), .tooLoud)
+    }
+
+    /// 同じ言葉を続けると通らなくなること。
+    func testRepeatingTheSamePhraseStopsWorking() {
+        let person = PersonFactory.person(atQueueIndex: 3, scene: .shopping)
+
+        func successes(repeatCount: Int) -> Int {
+            (0..<300).filter { seed in
+                BreakthroughResolver.resolve(
+                    phrase: .doke, volume: .loud, person: person,
+                    alertness: 0, repeatCount: repeatCount, remaining: 500, seed: seed
+                ).succeeded
+            }.count
+        }
+
+        XCTAssertGreaterThan(successes(repeatCount: 0), successes(repeatCount: 3))
+    }
+
+    /// 警戒されると乱暴な手が効かなくなること。
+    func testAlertnessBlocksRoughTactics() {
+        let person = PersonFactory.person(atQueueIndex: 8, scene: .shopping)
+
+        func successes(alertness: Double) -> Int {
+            (0..<300).filter { seed in
+                BreakthroughResolver.resolve(
+                    phrase: .doke, volume: .loud, person: person,
+                    alertness: alertness, repeatCount: 0, remaining: 500, seed: seed
+                ).succeeded
+            }.count
+        }
+
+        XCTAssertGreaterThan(successes(alertness: 0), successes(alertness: 80))
+    }
+
+    func testGuardOnlyAppearsWhenAlertnessIsExtreme() {
+        XCTAssertEqual(Alertness.guardChance(50), 0)
+        XCTAssertEqual(Alertness.guardChance(84), 0)
+        XCTAssertGreaterThan(Alertness.guardChance(100), 0)
+    }
+
+    func testAlertnessCoolsDownOverTime() {
+        let later = Alertness.current(anchor: 60, anchorDate: noon, now: noon.addingTimeInterval(60))
+        XCTAssertLessThan(later, 60)
+        XCTAssertGreaterThanOrEqual(later, 0)
+    }
+
+    /// 進める人数が、残り人数を超えないこと。
+    func testBreakthroughNeverOvershootsTheFront() {
+        let person = PersonFactory.person(atQueueIndex: 1, scene: .shopping)
+        for seed in 0..<200 {
+            let outcome = BreakthroughResolver.resolve(
+                phrase: .doke, volume: .loud, person: person,
+                alertness: 0, repeatCount: 0, remaining: 3, seed: seed
+            )
+            XCTAssertLessThanOrEqual(outcome.advance, 3)
+        }
     }
 
     // MARK: - 音

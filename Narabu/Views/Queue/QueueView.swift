@@ -8,6 +8,7 @@ struct QueueView: View {
     @Environment(QueueStore.self) private var store
     @Environment(PurchaseStore.self) private var purchases
     @Environment(SoundPlayer.self) private var sound
+    @Environment(VoiceRecognizer.self) private var voice
 
     @State private var isShowingCollection = false
     @State private var isShowingItems = false
@@ -20,6 +21,9 @@ struct QueueView: View {
     @State private var clearResult: StageClearResult?
     @State private var activeMission: Mission?
     @State private var advancePulse: AdvancePulse?
+    @State private var isShowingVoicePermission = false
+    /// 成功した瞬間に画面中央へ大きく出す人数。
+    @State private var gainBanner: Int?
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
     private var isBusy: Bool {
@@ -36,6 +40,7 @@ struct QueueView: View {
                 reactionToast
                 personCard
                 missionCard
+                voiceControl
                 actionRow
                 bottomBar
             }
@@ -44,6 +49,8 @@ struct QueueView: View {
             .opacity(overtake == nil ? 1 : 0.2)
             .allowsHitTesting(!isBusy)
             .animation(.easeInOut(duration: 0.2), value: isBusy)
+
+            gainBannerView
 
             if let event = store.pendingEvent {
                 EventView(event: event) { choice in
@@ -85,6 +92,11 @@ struct QueueView: View {
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $isShowingLoadout) { LoadoutView() }
+        .sheet(isPresented: $isShowingVoicePermission) {
+            VoicePermissionView()
+                .presentationDetents([.large])
+        }
+        .animation(.snappy(duration: 0.25), value: gainBanner)
         .fullScreenCover(item: $gachaMode) { mode in
             GachaView(mode: mode, onDraw: { draw(mode) }, onFinish: { gachaMode = nil })
         }
@@ -115,6 +127,8 @@ struct QueueView: View {
             disturbance: disturbance,
             overtake: overtake,
             advancePulse: advancePulse,
+            // 吹き出しは同時にひとつだけ。反応が出ているあいだは前の人が黙る。
+            silencesRemark: reaction != nil || gainBanner != nil,
             onTapPersonAhead: {}
         )
         .ignoresSafeArea()
@@ -145,15 +159,55 @@ struct QueueView: View {
             .font(.caption.weight(.medium))
 
             progressBar
-            focusBar
 
-            if store.combo >= 3 {
-                comboBadge
+            HStack(spacing: 10) {
+                labelledGauge(
+                    title: "集中",
+                    ratio: store.focusRatio,
+                    tint: store.isFocusLow
+                        ? Color(red: 0.94, green: 0.52, blue: 0.34)
+                        : Color(red: 0.52, green: 0.82, blue: 0.92)
+                )
+                labelledGauge(
+                    title: "警戒",
+                    ratio: store.alertness / Alertness.maximum,
+                    tint: store.alertLevel.color
+                )
+            }
+
+            HStack(spacing: 8) {
+                if store.alertLevel != .calm {
+                    Text(store.alertLevel.label)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(store.alertLevel.color)
+                }
+                if store.combo >= 3 {
+                    comboBadge
+                }
             }
         }
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.65), radius: 5, y: 1)
-        .padding(.top, 2)
+        .padding(.top, 0)
+    }
+
+    /// 何のゲージか分かるよう、必ず名前を添える。
+    private func labelledGauge(title: String, ratio: Double, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.85))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.2))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(2, geometry.size.width * min(1, max(0, ratio))))
+                        .animation(.easeOut(duration: 0.3), value: ratio)
+                }
+            }
+            .frame(height: 4)
+        }
     }
 
     /// 残り人数が減るほど、バーはゴール側へ伸びる。
@@ -169,33 +223,6 @@ struct QueueView: View {
             }
         }
         .frame(height: 4)
-    }
-
-    /// 集中力。切れても操作は止まらないが、成功しにくくなる。
-    private var focusBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 9))
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.2))
-                    Capsule()
-                        .fill(store.isFocusLow
-                              ? Color(red: 0.94, green: 0.52, blue: 0.34)
-                              : Color(red: 0.52, green: 0.82, blue: 0.92))
-                        .frame(width: max(2, geometry.size.width * store.focusRatio))
-                        .animation(.easeOut(duration: 0.3), value: store.focusRatio)
-                }
-            }
-            .frame(height: 4)
-
-            if store.isFocusLow {
-                Text("集中が切れかけ")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color(red: 1.0, green: 0.72, blue: 0.56))
-            }
-        }
-        .foregroundStyle(.white.opacity(0.8))
     }
 
     /// ガチャの残り時間は隅に小さく。引ける時だけ色がつく。
@@ -223,6 +250,20 @@ struct QueueView: View {
             Label(GachaMachine.countdownLabel(cooldown), systemImage: "clock")
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .opacity(0.75)
+        }
+    }
+
+    /// 進んだ瞬間だけ、画面の真ん中に大きく出す。
+    @ViewBuilder
+    private var gainBannerView: some View {
+        if let gainBanner {
+            Text("＋\(gainBanner)人")
+                .font(.system(size: 62, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .shadow(color: AppTheme.stamp.opacity(0.9), radius: 12)
+                .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                .allowsHitTesting(false)
         }
     }
 
@@ -333,6 +374,20 @@ struct QueueView: View {
                 .foregroundStyle(AppTheme.ink)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+            .padding(.bottom, 6)
+        }
+    }
+
+    // MARK: - 3. 声で押し通す
+
+    @ViewBuilder
+    private var voiceControl: some View {
+        if !store.hasClearedStage {
+            VoiceControl(
+                onVoice: { phrase, volume in breakThrough(phrase, volume) },
+                onSilent: { phrase, volume in breakThrough(phrase, volume) },
+                onNeedsPermission: { isShowingVoicePermission = true }
+            )
             .padding(.bottom, 6)
         }
     }
@@ -451,11 +506,43 @@ struct QueueView: View {
     /// 前に進んだ余韻。操作は止めないので、続けて押せる。
     private func pulse(people: Int) {
         advancePulse = AdvancePulse(startedAt: .now, people: people)
+        gainBanner = people
 
         Task {
             try? await Task.sleep(for: .seconds(AdvancePulse.duration))
             advancePulse = nil
         }
+        Task {
+            try? await Task.sleep(for: .seconds(0.75))
+            gainBanner = nil
+        }
+    }
+
+    /// 声、またはタップの強さで押し通す。
+    private func breakThrough(_ phrase: VoicePhrase, _ volume: VoiceVolume) {
+        guard !isBusy else { return }
+
+        let outcome = store.breakThrough(phrase: phrase, volume: volume)
+        show(.init(
+            grade: outcome.succeeded ? .great : (outcome.advance < 0 ? .backfire : .miss),
+            message: outcome.message,
+            advance: outcome.advance
+        ))
+
+        if outcome.caughtByGuard {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            sound.play(.fail)
+        } else if outcome.succeeded {
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            sound.play(.great)
+            pulse(people: outcome.advance)
+        } else {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+            sound.play(.fail)
+        }
+
+        withAnimation(.easeOut(duration: 0.12)) { disturbance = 1 }
+        withAnimation(.easeIn(duration: 0.5).delay(0.12)) { disturbance = 0 }
     }
 
     private func use(_ item: GachaItem) {

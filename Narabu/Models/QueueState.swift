@@ -54,6 +54,9 @@ struct QueueState: Codable, Equatable {
     var focusAnchorDate: Date
     /// 出来事が起きてからの行動回数。
     var actionsSinceEvent: Int
+    /// 基準時刻での警戒度。今の値は時刻ぶんだけ落ち着かせて求める。
+    var alertAnchor: Double
+    var alertAnchorDate: Date
 
     static func initial(now: Date = .now) -> QueueState {
         QueueState(
@@ -79,7 +82,9 @@ struct QueueState: Codable, Equatable {
             skillLevels: [:],
             focusAnchor: FocusGauge.maximum,
             focusAnchorDate: now,
-            actionsSinceEvent: 0
+            actionsSinceEvent: 0,
+            alertAnchor: 0,
+            alertAnchorDate: now
         )
     }
 
@@ -108,7 +113,9 @@ struct QueueState: Codable, Equatable {
         skillLevels: [String: Int],
         focusAnchor: Double,
         focusAnchorDate: Date,
-        actionsSinceEvent: Int
+        actionsSinceEvent: Int,
+        alertAnchor: Double,
+        alertAnchorDate: Date
     ) {
         self.joinedAt = joinedAt
         self.stageNumber = stageNumber
@@ -133,6 +140,8 @@ struct QueueState: Codable, Equatable {
         self.focusAnchor = focusAnchor
         self.focusAnchorDate = focusAnchorDate
         self.actionsSinceEvent = actionsSinceEvent
+        self.alertAnchor = alertAnchor
+        self.alertAnchorDate = alertAnchorDate
     }
 
     init(from decoder: Decoder) throws {
@@ -168,6 +177,8 @@ struct QueueState: Codable, Equatable {
         focusAnchor = try container.decodeIfPresent(Double.self, forKey: .focusAnchor) ?? FocusGauge.maximum
         focusAnchorDate = try container.decodeIfPresent(Date.self, forKey: .focusAnchorDate) ?? now
         actionsSinceEvent = try container.decodeIfPresent(Int.self, forKey: .actionsSinceEvent) ?? 0
+        alertAnchor = try container.decodeIfPresent(Double.self, forKey: .alertAnchor) ?? 0
+        alertAnchorDate = try container.decodeIfPresent(Date.self, forKey: .alertAnchorDate) ?? now
     }
 }
 
