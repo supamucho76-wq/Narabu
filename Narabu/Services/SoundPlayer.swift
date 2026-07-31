@@ -115,32 +115,38 @@ final class SoundPlayer {
 
     // MARK: - 録音のあいだ譲る
 
-    /// マイクを使うあいだ、こちらのエンジンを止めて場所を空ける。
+    /// マイクを使うあいだ、こちらのエンジンを完全に止めて場所を空ける。
     ///
-    /// 再生用と録音用のエンジンが同時にセッションを取り合うと、
-    /// 実機で不安定になるため、録音中は必ず譲る。
+    /// 録音に切り替わるとハードウェアの形式が変わることがあり、
+    /// 動いたままの再生エンジンは繋ぎ直しに失敗して落ちる。
+    /// 一時停止では足りないので、資源ごと手放す。
     func suspendForRecording() {
         guard isRunning else { return }
         musicNode.stop()
         effectNode.stop()
-        engine.pause()
+        engine.stop()
+        isRunning = false
     }
 
-    /// 録音が終わったら、また鳴らし始める。
+    /// 録音が終わったら、繋ぎ直してから鳴らし始める。
     func resumeAfterRecording() {
-        guard isRunning else { return }
+        guard !isRunning else { return }
+
+        let format = ToneSynth.format
+        engine.connect(effectNode, to: engine.mainMixerNode, format: format)
+        engine.connect(musicNode, to: engine.mainMixerNode, format: format)
 
         do {
             try engine.start()
             effectNode.play()
+            isRunning = true
+
             if isMusicEnabled, let mood = currentMood {
-                // 曲は最初から鳴らし直す。
-                let restored = currentMood
                 currentMood = nil
                 play(mood: mood)
-                currentMood = restored
             }
         } catch {
+            // 鳴らせなくても遊びは続けられる。
             isRunning = false
         }
     }

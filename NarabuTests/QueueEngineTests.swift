@@ -188,6 +188,20 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    /// 人物情報は説明で終わらせず、攻め方の材料になっていること。
+    func testEveryPersonalityTellsHowToApproachThem() {
+        for personality in Personality.allCases {
+            XCTAssertFalse(personality.tactic.isEmpty, "\(personality.label)に攻め方の手がかりがない")
+            XCTAssertNotEqual(personality.tactic, personality.hint,
+                              "\(personality.label)の手がかりと攻め方が同じ文になっている")
+            // 「肩を叩く」のような答えそのものは書かない。
+            for action in QueueAction.allCases {
+                XCTAssertFalse(personality.tactic.contains(action.label),
+                               "\(personality.label)の攻め方に答えがそのまま書かれている")
+            }
+        }
+    }
+
     // MARK: - ミッション
 
     /// アイテムが尽きても遊べるよう、ミッションは必ず作れること。

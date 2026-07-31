@@ -179,11 +179,12 @@ struct QueueView: View {
                 )
             }
 
+            // ゲージが何を引き起こすかを、必要なときだけ言葉で出す。
             HStack(spacing: 8) {
-                if store.alertLevel != .calm {
-                    Text(store.alertLevel.label)
+                if let warning = gaugeWarning {
+                    Text(warning.text)
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(store.alertLevel.color)
+                        .foregroundStyle(warning.color)
                 }
                 if store.combo >= 3 {
                     comboBadge
@@ -193,6 +194,23 @@ struct QueueView: View {
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.65), radius: 5, y: 1)
         .padding(.top, 0)
+    }
+
+    /// ゲージが傾いているときだけ、何が起きるかを教える。
+    private var gaugeWarning: (text: String, color: Color)? {
+        if store.alertLevel == .dangerous {
+            return ("警戒MAX　強引な手が通らず、警備員に戻される", store.alertLevel.color)
+        }
+        if store.alertLevel == .watched {
+            return ("見られている　強引な手が通りにくい", store.alertLevel.color)
+        }
+        if store.isFocusLow {
+            return ("集中切れ　成功しにくく、進みも1人減る", Color(red: 1.0, green: 0.72, blue: 0.56))
+        }
+        if store.focusRatio > 0.95, store.alertness < 10 {
+            return ("絶好調　いまが押しどき", Color(red: 0.62, green: 0.88, blue: 0.72))
+        }
+        return nil
     }
 
     /// 何のゲージか分かるよう、必ず名前を添える。
@@ -234,12 +252,22 @@ struct QueueView: View {
     private var gachaCorner: some View {
         if store.canDrawFreeGacha {
             Button { gachaMode = .free } label: {
-                Label("ガチャ", systemImage: "gift.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.stamp)
-                    .clipShape(Capsule())
+                HStack(spacing: 4) {
+                    Text("NEW")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(AppTheme.stamp)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.white)
+                        .clipShape(Capsule())
+                    Label("無料ガチャ", systemImage: "gift.fill")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AppTheme.stamp)
+                .clipShape(Capsule())
+                .shadow(color: AppTheme.stamp.opacity(0.6), radius: 6)
             }
         } else if store.canDrawWithTicket {
             Button { gachaMode = .ticket } label: {
@@ -337,6 +365,18 @@ struct QueueView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // 説明で終わらせず、どう攻めるかの材料にする。
+            HStack(alignment: .top, spacing: 5) {
+                Image(systemName: "lightbulb.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color(red: 0.82, green: 0.62, blue: 0.16))
+                    .padding(.top, 2)
+                Text(person.personality.tactic)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(AppTheme.ink.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)

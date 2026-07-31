@@ -15,6 +15,9 @@ struct VoiceControl: View {
     /// 権限の説明を出したいとき。
     let onNeedsPermission: () -> Void
 
+    /// 声を使うかどうか。実機で安定するまでは既定で切ってある。
+    @AppStorage("isVoiceEnabled") private var isVoiceEnabled = false
+
     @State private var mode: Mode = .idle
     @State private var silentPhrase: VoicePhrase = .sumimasen
     @State private var gaugeStoppedAt: Date?
@@ -38,6 +41,10 @@ struct VoiceControl: View {
                 chargingPanel
             }
         }
+        .onChange(of: voice.isListening) { _, listening in
+            // 途中で聞き取りが止まったら、その画面に取り残されないようにする。
+            if !listening, mode == .listening { mode = .idle }
+        }
     }
 
     // MARK: - ふだんの見た目
@@ -45,9 +52,9 @@ struct VoiceControl: View {
     private var idleButton: some View {
         HStack(spacing: 8) {
             Button {
-                beginVoice()
+                beginSilent()
             } label: {
-                Label("声で通す", systemImage: "mic.fill")
+                Label("押し通す", systemImage: "figure.walk.motion")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 42)
@@ -55,15 +62,19 @@ struct VoiceControl: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
 
-            Button {
-                beginSilent()
-            } label: {
-                Label("無言", systemImage: "hand.raised.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                    .frame(minWidth: 96, maxWidth: 96, minHeight: 42)
-                    .background(AppTheme.paper.opacity(0.94))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            // 声は実機で安定を確かめてから出す。既定では表示しない。
+            if isVoiceEnabled {
+                Button {
+                    beginVoice()
+                } label: {
+                    Label("声", systemImage: "mic.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .frame(minWidth: 76, maxWidth: 76, minHeight: 42)
+                        .background(AppTheme.paper.opacity(0.94))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .disabled(voice.isStarting)
             }
         }
     }

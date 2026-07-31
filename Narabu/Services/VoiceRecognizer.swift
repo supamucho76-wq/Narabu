@@ -155,8 +155,8 @@ final class VoiceRecognizer {
         self.engine = engine
 
         let input = engine.inputNode
-        let format = input.inputFormat(forBus: 0)
-        // 形式が揃っていないまま tap を付けると実機で落ちる。
+        // tap にはバスの出力形式を渡す。入力形式を渡すと食い違って落ちる。
+        let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             fail(reason: "マイクを使えませんでした")
             return false

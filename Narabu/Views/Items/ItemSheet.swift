@@ -6,6 +6,7 @@ struct ItemSheet: View {
     @Environment(PurchaseStore.self) private var purchases
     @Environment(SoundPlayer.self) private var sound
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("isVoiceEnabled") private var isVoiceEnabled = false
 
     /// 使うアイテムを親に渡す。演出は行列の画面で行う。
     let onUse: (GachaItem) -> Void
@@ -154,13 +155,21 @@ struct ItemSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    /// 音の入り切り。
+    /// 音と、試している機能の入り切り。
     private var soundSettings: some View {
         @Bindable var sound = sound
 
-        return VStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: 6) {
             Toggle("効果音", isOn: $sound.isEffectEnabled)
             Toggle("BGM", isOn: $sound.isMusicEnabled)
+
+            Divider().padding(.vertical, 2)
+
+            Toggle("声で通す（試験中）", isOn: $isVoiceEnabled)
+            Text("実際に声を出して列を進めます。端末によっては不安定なため、既定では切ってあります。切っていても「押し通す」で同じように遊べます。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.subheadline)
         .foregroundStyle(AppTheme.ink)

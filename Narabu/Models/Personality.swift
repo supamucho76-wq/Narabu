@@ -47,6 +47,25 @@ enum Personality: String, CaseIterable, Sendable {
         }
     }
 
+    /// どう攻めればいいかの手がかり。
+    ///
+    /// 正解そのものではなく、「こう出ると通りやすい」という傾向を伝える。
+    /// ただの説明で終わらせず、選ぶ材料になるようにする。
+    var tactic: String {
+        switch self {
+        case .chatty: "話し相手を探している。声をかければ乗ってくる"
+        case .wary: "触れられるのを嫌がる。褒めて距離を縮めたい"
+        case .hurried: "先を急いでいる。理由をつけて頼めば譲りやすい"
+        case .sleepy: "意識が飛んでいる。軽く触れれば起きる"
+        case .grumpy: "機嫌が悪い。持ち上げるのが一番安全"
+        case .kind: "人がよさそう。素直に頼めば応じてくれる"
+        case .cheerful: "テンションが高い。勢いに乗るのが早い"
+        case .distracted: "声は届かない。物理的に気づかせるしかない"
+        case .absorbed: "集中している。静かに声をかけたい"
+        case .tourist: "困っている。助けると恩を返してくれる"
+        }
+    }
+
     /// いちばん効くアクション。
     var best: QueueAction {
         switch self {
