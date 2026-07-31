@@ -70,10 +70,10 @@ struct ItemSheet: View {
                     .font(.subheadline.weight(.semibold))
                 Text("\(PurchaseStore.skipAmount)人抜き")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
                 Text("ガチャを待たずに進めます")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
 
             Spacer()
@@ -129,10 +129,10 @@ struct ItemSheet: View {
                 }
                 Text(item.summary)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
                 Text("所持 \(count)個")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
 
             Spacer()
@@ -146,7 +146,7 @@ struct ItemSheet: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20)
                     .frame(minHeight: AppTheme.minimumTapHeight)
-                    .background(count > 0 ? AppTheme.stamp : Color.secondary)
+                    .background(count > 0 ? AppTheme.stamp : AppTheme.inkSecondary)
                     .clipShape(Capsule())
             }
             .buttonStyle(GameButtonStyle())
@@ -174,7 +174,7 @@ struct ItemSheet: View {
             Toggle("声で通す（試験中）", isOn: $isVoiceEnabled)
             Text("実際に声を出して列を進めます。端末によっては不安定なため、既定では切ってあります。切っていても「押し通す」で同じように遊べます。")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(.subheadline)
@@ -197,7 +197,7 @@ struct ItemSheet: View {
             Divider().padding(.vertical, 8)
             Text("開発用")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
             Button("最初からやり直す（初回ガチャも戻る）") {
                 store.resetForDebugging()
                 dismiss()

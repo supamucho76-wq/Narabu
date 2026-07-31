@@ -16,6 +16,10 @@ struct NarabuApp: App {
     var body: some Scene {
         WindowGroup {
             QueueView()
+                // 画面はすべて紙と墨の配色で組んでいる。
+                // 端末が暗い配色だと、背景は紙のままで文字だけが明るく反転して読めなくなる。
+                // 配色を明るい側に固定して、標準の部品も同じ前提で描かせる。
+                .preferredColorScheme(.light)
                 .environment(queue)
                 .environment(purchases)
                 .environment(sound)

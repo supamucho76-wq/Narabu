@@ -370,7 +370,7 @@ struct QueueView: View {
                     if reaction.advance != 0 {
                         Text(reaction.advance > 0 ? "+\(reaction.advance)人" : "\(reaction.advance)人")
                             .font(.caption.weight(.black))
-                            .foregroundStyle(reaction.advance > 0 ? AppTheme.stamp : .secondary)
+                            .foregroundStyle(reaction.advance > 0 ? AppTheme.stamp : AppTheme.inkSecondary)
                     }
                     Text(reaction.message)
                         .font(.caption)
@@ -398,7 +398,7 @@ struct QueueView: View {
             HStack(spacing: 6) {
                 Text("前の人")
                     .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
                 Text(person.descriptor)
                     .font(.caption.weight(.semibold))
                 Spacer()
@@ -408,7 +408,7 @@ struct QueueView: View {
             }
             Text(person.personality.hint)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             // 説明で終わらせず、どう攻めるかの材料にする。
@@ -448,7 +448,7 @@ struct QueueView: View {
                             .font(.caption.weight(.bold))
                         Text(mission.instruction)
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppTheme.inkSecondary)
                             .lineLimit(1)
                     }
                     Spacer()

@@ -76,7 +76,7 @@ struct LoadoutView: View {
                         Text(store.equippedItem(in: slot)?.name ?? "なし")
                             .font(.caption2)
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
 
                     ForEach(EquipmentCatalog.items(in: slot)) { equipment in
                         equipmentRow(equipment, slot: slot)
@@ -100,7 +100,7 @@ struct LoadoutView: View {
                         .fill(equipment.rarity.color.opacity(isOwned ? 0.16 : 0.06))
                     Image(systemName: isOwned ? equipment.symbolName : "lock.fill")
                         .font(.system(size: 18))
-                        .foregroundStyle(isOwned ? equipment.rarity.color : .secondary)
+                        .foregroundStyle(isOwned ? equipment.rarity.color : AppTheme.inkSecondary)
                 }
                 .frame(width: 42, height: 42)
 
@@ -111,11 +111,11 @@ struct LoadoutView: View {
                             .foregroundStyle(equipment.rarity.color)
                         Text(equipment.name)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(isOwned ? AppTheme.ink : .secondary)
+                            .foregroundStyle(isOwned ? AppTheme.ink : AppTheme.inkSecondary)
                     }
                     Text(isOwned ? equipment.detail : "未入手：\(equipment.source)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -132,7 +132,7 @@ struct LoadoutView: View {
             if isOwned, !isEquipped, let change = comparison(equipping: equipment, in: slot) {
                 Text(change)
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
 
             if isOwned {
@@ -221,22 +221,22 @@ struct LoadoutView: View {
                 Image(systemName: isLearned ? skill.symbolName : "lock.fill")
                     .font(.system(size: 18))
                     .frame(width: 32)
-                    .foregroundStyle(isLearned ? AppTheme.ink : .secondary)
+                    .foregroundStyle(isLearned ? AppTheme.ink : AppTheme.inkSecondary)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(skill.name)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isLearned ? AppTheme.ink : .secondary)
+                        .foregroundStyle(isLearned ? AppTheme.ink : AppTheme.inkSecondary)
                     Text(skill.detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
                 }
 
                 Spacer()
 
                 Text(isLearned ? "Lv.\(level)" : "未習得")
                     .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(isLearned ? AppTheme.ink : .secondary)
+                    .foregroundStyle(isLearned ? AppTheme.ink : AppTheme.inkSecondary)
             }
 
             if isLearned {
@@ -256,7 +256,7 @@ struct LoadoutView: View {
                     }
                 }
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
 
                 Button {
                     store.upgrade(skill)
@@ -271,7 +271,7 @@ struct LoadoutView: View {
             } else {
                 Text("ステージをクリアすると覚えます")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
         }
         .padding(12)
@@ -299,7 +299,7 @@ struct LoadoutView: View {
         return VStack(alignment: .leading, spacing: 7) {
             Text("いまの合計")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
 
             effectRow("アイテムで抜ける人数",
                       value: "×\(fmt(effects.overtakeMultiplier))",
@@ -330,7 +330,7 @@ struct LoadoutView: View {
             .font(.caption2)
             Text(note)
                 .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
         }
         .foregroundStyle(AppTheme.ink.opacity(0.8))
     }

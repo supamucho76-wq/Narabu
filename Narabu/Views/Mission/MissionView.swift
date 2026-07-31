@@ -54,7 +54,7 @@ struct MissionView: View {
                 .font(.headline)
             Text(mission.instruction)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
                 .multilineTextAlignment(.center)
         }
         .foregroundStyle(AppTheme.ink)
@@ -131,7 +131,7 @@ struct MissionView: View {
                     progressTrack(ratio: Double(taps) / Double(target))
                     Text(String(format: "残り %.1f秒", remaining))
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
                 }
                 .task(id: remaining <= 0) {
                     // 時間切れ。連打が足りていなければ失敗。
@@ -160,7 +160,7 @@ struct MissionView: View {
         VStack(spacing: 10) {
             Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle")
                 .font(.system(size: 38))
-                .foregroundStyle(success ? AppTheme.stamp : Color.secondary)
+                .foregroundStyle(success ? AppTheme.stamp : AppTheme.inkSecondary)
 
             Text(success ? "成功" : "惜しい")
                 .font(.title3.weight(.bold))
@@ -169,11 +169,11 @@ struct MissionView: View {
             if success {
                 Text("\(mission.reward)人 前へ進んだ　＋\(mission.coins)コイン")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             } else {
                 Text("すぐ次に挑戦できます")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
         }
     }

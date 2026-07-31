@@ -100,7 +100,7 @@ struct VoiceControl: View {
 
                 Text(VoiceVolume.of(voice.level).label)
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
 
             levelMeter(voice.level)
@@ -130,7 +130,7 @@ struct VoiceControl: View {
             HStack {
                 Text("言いかた")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
                 Spacer()
                 Text(silentPhrase.label)
                     .font(.caption.weight(.bold))
@@ -163,14 +163,14 @@ struct VoiceControl: View {
                     levelMeter(strength)
                     Text(VoiceVolume.of(strength).label)
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
                 }
             }
 
             HStack(spacing: 8) {
                 Button("やめる") { mode = .idle }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
 
                 Button {
                     endSilent()

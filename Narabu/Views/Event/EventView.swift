@@ -22,7 +22,7 @@ struct EventView: View {
                         .font(.headline)
                     Text(event.situation)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -76,7 +76,7 @@ struct EventView: View {
                     gain(
                         symbol: choice.advance > 0 ? "arrow.up.forward" : "arrow.down.backward",
                         text: choice.advance > 0 ? "\(choice.advance)人前進" : "\(-choice.advance)人後退",
-                        tint: choice.advance > 0 ? AppTheme.stamp : .secondary
+                        tint: choice.advance > 0 ? AppTheme.stamp : AppTheme.inkSecondary
                     )
                 }
                 if choice.coins > 0 {

@@ -242,6 +242,24 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    /// どこに着いたのかが必ず言葉で分かること。
+    func testEveryStageDescribesItsArrival() {
+        for stage in StageCatalog.stages {
+            XCTAssertFalse(stage.arrivalHeadline.isEmpty, "\(stage.name)に到着の見出しがない")
+            XCTAssertFalse(stage.arrivalStory.isEmpty, "\(stage.name)に到着の情景がない")
+            XCTAssertFalse(stage.openingNote.isEmpty, "\(stage.name)に並び始めの一言がない")
+            XCTAssertNotEqual(stage.arrivalHeadline, stage.name,
+                              "\(stage.name)の見出しが名前のままで、着いた感じがない")
+        }
+    }
+
+    /// 周回しても到着の言葉が消えないこと。
+    func testArrivalTextSurvivesLooping() {
+        let second = StageCatalog.stage(number: 1, lap: 2)
+        XCTAssertFalse(second.arrivalHeadline.isEmpty)
+        XCTAssertFalse(second.arrivalStory.isEmpty)
+    }
+
     func testEveryStageHasAtLeastOneScene() {
         for stage in StageCatalog.stages {
             XCTAssertFalse(stage.scenes.isEmpty, "\(stage.name)に景色がない")

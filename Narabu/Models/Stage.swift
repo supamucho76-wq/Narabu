@@ -11,6 +11,10 @@ struct Stage: Identifiable, Equatable, Sendable {
     let scenes: [SceneKind]
     /// 最後尾に着いたときの一言。
     let openingNote: String
+    /// たどり着いたときの見出し。
+    let arrivalHeadline: String
+    /// たどり着いた瞬間の情景。何のために並んでいたのかが、ここで回収される。
+    let arrivalStory: String
     /// クリアしたときにもらえるもの。
     let reward: StageReward
 
@@ -60,6 +64,8 @@ enum StageCatalog {
             id: 1, name: "コンビニ", queueLength: 10,
             scenes: [.residential],
             openingNote: "レジが1台しか開いていない。",
+            arrivalHeadline: "コンビニに着いた",
+            arrivalStory: "自動ドアが開いて、冷房と揚げ物の匂いが流れてきた。\nレジの店員と目が合う。ようやく自分の番だ。",
             reward: StageReward(coins: 50, gachaTickets: 1,
                                 equipmentID: "sneakers", skillID: "talk")
         ),
@@ -67,6 +73,8 @@ enum StageCatalog {
             id: 2, name: "人気ラーメン店", queueLength: 30,
             scenes: [.shopping],
             openingNote: "券売機の前で誰かが悩んでいる。",
+            arrivalHeadline: "券売機の前に立った",
+            arrivalStory: "湯気とスープの匂いが顔にあたる。\n背中越しに「次の方どうぞ」と声がかかった。",
             reward: StageReward(coins: 120, gachaTickets: 1,
                                 equipmentID: "ticket", skillID: nil)
         ),
@@ -74,6 +82,8 @@ enum StageCatalog {
             id: 3, name: "人気カフェ", queueLength: 80,
             scenes: [.forest],
             openingNote: "全員が同じ限定ドリンクを頼んでいる。",
+            arrivalHeadline: "カフェのカウンターに着いた",
+            arrivalStory: "全員が頼んでいた限定ドリンクを、ようやく自分も頼めた。\n名前を書かれたカップが差し出される。",
             reward: StageReward(coins: 260, gachaTickets: 1,
                                 equipmentID: "sunglasses", skillID: "luck")
         ),
@@ -81,6 +91,8 @@ enum StageCatalog {
             id: 4, name: "テーマパーク", queueLength: 150,
             scenes: [.park],
             openingNote: "待ち時間の看板が、さっきより伸びた。",
+            arrivalHeadline: "ゲートをくぐった",
+            arrivalStory: "音楽が大きくなり、目の前に城が現れた。\n並んでいた150分が、ここから始まる一日のための時間だったと分かる。",
             reward: StageReward(coins: 480, gachaTickets: 2,
                                 equipmentID: "bicycle", skillID: "pressure")
         ),
@@ -88,6 +100,8 @@ enum StageCatalog {
             id: 5, name: "ライブ会場", queueLength: 300,
             scenes: [.night],
             openingNote: "物販の列と入場の列が混ざっている。",
+            arrivalHeadline: "会場に入った",
+            arrivalStory: "扉が開いた瞬間、低音が体を打った。\n外で待っていた寒さを、もう誰も覚えていない。",
             reward: StageReward(coins: 800, gachaTickets: 2,
                                 equipmentID: "vipPass", skillID: nil)
         ),
@@ -95,6 +109,8 @@ enum StageCatalog {
             id: 6, name: "コミケ", queueLength: 500,
             scenes: [.hall],
             openingNote: "始発で来た人が、まだ後ろにいる。",
+            arrivalHeadline: "目当ての島にたどり着いた",
+            arrivalStory: "最後の1冊が、ちょうど目の前に残っていた。\n始発で来た甲斐があったと、心から思う。",
             reward: StageReward(coins: 1_400, gachaTickets: 3,
                                 equipmentID: "motorbike", skillID: "negotiate")
         ),
@@ -102,6 +118,8 @@ enum StageCatalog {
             id: 7, name: "世界一のラーメン店", queueLength: 1_000,
             scenes: [.sea, .snow, .desert, .space, .hell, .heaven, .ramen],
             openingNote: "列がどこまで続いているのか、誰も知らない。",
+            arrivalHeadline: "ついに、暖簾をくぐった",
+            arrivalStory: "海を渡り、砂漠を抜け、宇宙を通り、地獄と天国を経て、\nようやく丼が置かれた。ごく普通の、うまいラーメンだった。",
             reward: StageReward(coins: 3_000, gachaTickets: 5,
                                 equipmentID: nil, skillID: nil)
         )
@@ -122,6 +140,8 @@ enum StageCatalog {
             queueLength: Int(Double(base.queueLength) * growth),
             scenes: base.scenes,
             openingNote: base.openingNote,
+            arrivalHeadline: base.arrivalHeadline,
+            arrivalStory: base.arrivalStory,
             reward: StageReward(
                 coins: Int(Double(base.reward.coins) * growth),
                 gachaTickets: base.reward.gachaTickets,

@@ -21,7 +21,7 @@ struct VoicePermissionView: View {
                     .font(.headline)
                 Text("「すみません！」「どけ！」など、実際に声を出すと前の人たちが動きます。\n言いかたと声の大きさで結果が変わります。")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
                     .multilineTextAlignment(.center)
             }
 
@@ -44,7 +44,7 @@ struct VoicePermissionView: View {
                     if voice.needsSettings {
                         Text("設定アプリの「ならぶ」から、マイクと音声認識をオンにすると使えます。")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppTheme.inkSecondary)
                     }
                 }
                 .multilineTextAlignment(.center)
@@ -82,7 +82,7 @@ struct VoicePermissionView: View {
 
                 Button("使わずに遊ぶ") { dismiss() }
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkSecondary)
             }
         }
         .padding(.horizontal, 28)

@@ -56,7 +56,7 @@ struct CollectionView: View {
                 .monospacedDigit()
             Text("すべて集めても、特に何も起きません。")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkSecondary)
         }
         .padding(.top, 16)
         .padding(.bottom, 10)
@@ -121,7 +121,7 @@ private struct PrizeCell: View {
 
             Text(prize.rarity.label)
                 .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(isOwned ? prize.rarity.color : .secondary)
+                .foregroundStyle(isOwned ? prize.rarity.color : AppTheme.inkSecondary)
 
             if isOwned, prize.hiddenEffect != nil {
                 Image(systemName: "sparkles")
@@ -166,7 +166,7 @@ private struct PrizeDetailView: View {
 
                     Text(prize.note)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -191,7 +191,7 @@ private struct PrizeDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("受け取った記録")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkSecondary)
 
                     ForEach(records) { record in
                         HStack(spacing: 8) {
@@ -199,7 +199,7 @@ private struct PrizeDetailView: View {
                                 .foregroundStyle(AppTheme.stamp)
                             Text("STAGE \(record.stageNumber)")
                             Text("\(record.minutesWaited)分並んだ")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.inkSecondary)
                             Spacer()
                         }
                         .font(.caption.monospacedDigit())
