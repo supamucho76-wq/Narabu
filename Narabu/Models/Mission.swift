@@ -10,8 +10,8 @@ struct Mission: Identifiable, Equatable, Sendable {
         case mash(taps: Int, seconds: Double)
         /// 動くゲージを当たり範囲で止める。
         case timing(targetWidth: Double, speed: Double)
-        /// 指定された順番でアクションを押す。
-        case sequence([QueueAction])
+        /// 前の人の仕草を見て、どう出るかを選ぶ。
+        case encounter(Encounter)
     }
 
     let id: UUID
@@ -60,17 +60,12 @@ enum MissionFactory {
             )
 
         default:
-            let length = 3 + Int(QueueEngine.unitRandom(seed, salt: 0x7E55) * 2)
-            let order = (0..<length).map { step -> QueueAction in
-                let index = Int(QueueEngine.unitRandom(seed &+ step &* 97, salt: 0x8F66)
-                                * Double(QueueAction.allCases.count))
-                return QueueAction.allCases[min(index, QueueAction.allCases.count - 1)]
-            }
+            // 進む人数は選んだ行動の結果で決まるので、ここでは目安だけ持たせる。
             return Mission(
                 id: UUID(),
-                title: "手順どおりに",
-                instruction: "表示された順番にボタンを押す",
-                kind: .sequence(order),
+                title: "前の人を観察する",
+                instruction: "仕草から人柄を読んで、どう出るか決める",
+                kind: .encounter(Encounter.make(seed: seed)),
                 reward: 4 + scale,
                 coins: 32
             )

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 声を使う前に、何のために使うのかを説明する画面。
 ///
@@ -35,32 +36,48 @@ struct VoicePermissionView: View {
             .background(AppTheme.ink.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            if case .unavailable(let reason) = voice.availability {
-                Text(reason)
-                    .font(.caption2)
-                    .foregroundStyle(Color(red: 0.78, green: 0.28, blue: 0.24))
-                    .multilineTextAlignment(.center)
-                Text("設定アプリから、マイクと音声認識を許可すると使えます。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            if let reason = voice.unavailableReason {
+                VStack(spacing: 4) {
+                    Text(reason)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(red: 0.78, green: 0.28, blue: 0.24))
+                    if voice.needsSettings {
+                        Text("設定アプリの「ならぶ」から、マイクと音声認識をオンにすると使えます。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .multilineTextAlignment(.center)
             }
 
             Spacer()
 
             VStack(spacing: 8) {
-                Button {
-                    Task {
-                        await voice.requestPermission()
-                        if voice.canListen { dismiss() }
+                if voice.needsSettings {
+                    Button {
+                        openSettings()
+                    } label: {
+                        Text("設定を開く")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(AppTheme.stamp)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                } label: {
-                    Text("マイクを許可する")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(AppTheme.stamp)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    Button {
+                        Task {
+                            await voice.requestPermission()
+                            if voice.canListen { dismiss() }
+                        }
+                    } label: {
+                        Text("マイクを許可する")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(AppTheme.stamp)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
                 }
 
                 Button("使わずに遊ぶ") { dismiss() }
@@ -72,6 +89,11 @@ struct VoicePermissionView: View {
         .padding(.bottom, 24)
         .background(AppTheme.paper.ignoresSafeArea())
         .foregroundStyle(AppTheme.ink)
+    }
+
+    private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func note(symbol: String, text: String) -> some View {

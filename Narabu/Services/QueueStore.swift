@@ -498,8 +498,10 @@ final class QueueStore {
     }
 
     /// ミッションの結果を反映して、次のミッションを用意する。
-    func completeMission(_ mission: Mission, success: Bool) {
-        let advance = success ? mission.reward : mission.consolationReward
+    ///
+    /// 駆け引きだけは進む人数が選んだ行動で決まるので、その結果を優先する。
+    func completeMission(_ mission: Mission, success: Bool, encounter: EncounterResult? = nil) {
+        let advance = encounter?.advance ?? (success ? mission.reward : mission.consolationReward)
         let coins = success ? mission.coins : mission.consolationCoins
 
         state.coins += coins
@@ -507,8 +509,12 @@ final class QueueStore {
         // ミッションをやり切ると気持ちが切り替わり、集中が大きく戻る。
         restoreFocus(success ? 45 : 20)
 
-        if advance > 0 {
-            moveAnchor(to: min(stage.queueLength, progress + advance))
+        if let encounter {
+            changeAlert(by: encounter.alertDelta)
+        }
+
+        if advance != 0 {
+            moveAnchor(to: min(stage.queueLength, max(0, progress + advance)))
         }
 
         currentMission = nil

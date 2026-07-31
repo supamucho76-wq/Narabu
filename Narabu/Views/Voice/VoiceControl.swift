@@ -210,7 +210,11 @@ struct VoiceControl: View {
             onNeedsPermission()
             return
         }
-        voice.start()
+        // 始められなかったときは聞き取り画面に入らない。入ると出られなくなる。
+        guard voice.start() else {
+            onNeedsPermission()
+            return
+        }
         mode = .listening
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }

@@ -20,6 +20,11 @@ struct NarabuApp: App {
                 .environment(purchases)
                 .environment(sound)
                 .environment(voice)
+                .task {
+                    // 録音のあいだは、再生用のエンジンに場所を空けてもらう。
+                    voice.onWillRecord = { [sound] in sound.suspendForRecording() }
+                    voice.onDidFinishRecording = { [sound] in sound.resumeAfterRecording() }
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

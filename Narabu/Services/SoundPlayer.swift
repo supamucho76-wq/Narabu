@@ -113,6 +113,38 @@ final class SoundPlayer {
         musicNode.play()
     }
 
+    // MARK: - 録音のあいだ譲る
+
+    /// マイクを使うあいだ、こちらのエンジンを止めて場所を空ける。
+    ///
+    /// 再生用と録音用のエンジンが同時にセッションを取り合うと、
+    /// 実機で不安定になるため、録音中は必ず譲る。
+    func suspendForRecording() {
+        guard isRunning else { return }
+        musicNode.stop()
+        effectNode.stop()
+        engine.pause()
+    }
+
+    /// 録音が終わったら、また鳴らし始める。
+    func resumeAfterRecording() {
+        guard isRunning else { return }
+
+        do {
+            try engine.start()
+            effectNode.play()
+            if isMusicEnabled, let mood = currentMood {
+                // 曲は最初から鳴らし直す。
+                let restored = currentMood
+                currentMood = nil
+                play(mood: mood)
+                currentMood = restored
+            }
+        } catch {
+            isRunning = false
+        }
+    }
+
     // MARK: - 音作り
 
     private static func buffer(for effect: SoundEffect) -> AVAudioPCMBuffer? {

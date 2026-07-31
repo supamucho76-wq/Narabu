@@ -160,21 +160,94 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
-    /// 残しているのは、指を動かして数秒で終わるものだけ。
+    /// 残しているのは、指を動かすものと観察して選ぶものだけ。
     func testAllMissionKindsCanAppear() {
         var seenMash = false
         var seenTiming = false
-        var seenSequence = false
+        var seenEncounter = false
 
         for seed in 0..<300 {
             switch MissionFactory.make(seed: seed, stage: StageCatalog.stages[3]).kind {
             case .mash: seenMash = true
             case .timing: seenTiming = true
-            case .sequence: seenSequence = true
+            case .encounter: seenEncounter = true
             }
         }
 
-        XCTAssertTrue(seenMash && seenTiming && seenSequence, "出てこないミッションの種類がある")
+        XCTAssertTrue(seenMash && seenTiming && seenEncounter, "出てこないミッションの種類がある")
+    }
+
+    // MARK: - 観察の駆け引き
+
+    /// 仕草だけを見せ、正体そのものは書かないこと。
+    func testObservationsNeverSpellOutTheAnswer() {
+        let answers = ["急いでいる", "短気", "ノリがいい", "警戒心", "筋トレ", "イヤホン", "子ども連れ", "係員を気にして"]
+
+        for trait in EncounterTrait.allCases {
+            for behavior in trait.behaviors {
+                for answer in answers {
+                    XCTAssertFalse(behavior.contains(answer),
+                                   "仕草に答えがそのまま書かれている：\(behavior)")
+                }
+            }
+        }
+    }
+
+    func testEncounterShowsThreeObservations() {
+        for seed in 0..<200 {
+            let encounter = Encounter.make(seed: seed)
+            XCTAssertEqual(encounter.observations.count, 3)
+            XCTAssertEqual(Set(encounter.observations).count, 3, "同じ仕草が重複して出ている")
+        }
+    }
+
+    /// 相性が良い行動が複数あり、正解がひとつに固定されないこと。
+    func testEachTraitHasSeveralWorkableActions() {
+        for trait in EncounterTrait.allCases {
+            XCTAssertGreaterThanOrEqual(trait.favorable.count, 2, "\(trait)の正解が1つしかない")
+            XCTAssertTrue(trait.favorable.isDisjoint(with: trait.forbidden),
+                          "\(trait)で最適解と地雷が重なっている")
+        }
+    }
+
+    /// 同じ相手に同じ手でも、結果に幅があること。
+    func testEncounterOutcomesVary() {
+        var grades: Set<EncounterResult.Grade> = []
+
+        for seed in 0..<400 {
+            let encounter = Encounter.make(seed: seed)
+            for action in EncounterAction.allCases {
+                grades.insert(encounter.resolve(action).grade)
+            }
+        }
+
+        XCTAssertTrue(grades.contains(.triumph))
+        XCTAssertTrue(grades.contains(.success))
+        XCTAssertTrue(grades.contains(.failure))
+        XCTAssertTrue(grades.contains(.twist), "予想外の展開が起きていない")
+    }
+
+    /// やってはいけない手には、ちゃんと罰があること。
+    func testForbiddenActionsHurt() {
+        for trait in EncounterTrait.allCases {
+            let encounter = Encounter(trait: trait, observations: trait.behaviors, seed: 5)
+            for action in trait.forbidden {
+                let result = encounter.resolve(action)
+                // まれに予想外へ転がるので、そこは咎めない。
+                if result.grade == .failure {
+                    XCTAssertGreaterThan(result.alertDelta, 0, "\(trait)への地雷なのに警戒が上がらない")
+                }
+            }
+        }
+    }
+
+    func testEveryEncounterResultHasSomethingToRead() {
+        for seed in 0..<200 {
+            let encounter = Encounter.make(seed: seed)
+            for action in EncounterAction.allCases {
+                XCTAssertFalse(encounter.resolve(action).message.isEmpty)
+            }
+        }
     }
 
     func testEveryStageHasAtLeastOneScene() {

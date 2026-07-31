@@ -60,11 +60,13 @@ struct QueueView: View {
                 }
                 .transition(.opacity)
             } else if let mission = activeMission {
-                MissionView(mission: mission) { success in
-                    store.completeMission(mission, success: success)
+                MissionView(mission: mission) { success, encounter in
+                    store.completeMission(mission, success: success, encounter: encounter)
                     activeMission = nil
                     sound.play(success ? .clear : .fail)
-                    if success { pulse(people: mission.reward) }
+
+                    let gained = encounter?.advance ?? (success ? mission.reward : 0)
+                    if gained > 0 { pulse(people: gained) }
                 }
                 .transition(.opacity)
             }

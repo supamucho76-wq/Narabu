@@ -4,16 +4,17 @@ import UIKit
 /// ミッションを遊ぶ画面。5〜20秒で終わる短いものだけを扱う。
 struct MissionView: View {
     let mission: Mission
-    /// 成否を親に返す。列を進めるのは親の仕事。
-    let onFinish: (Bool) -> Void
+    /// 成否と、駆け引きで決まった結果を親に返す。列を進めるのは親の仕事。
+    let onFinish: (Bool, EncounterResult?) -> Void
 
     @State private var taps = 0
     @State private var deadline: Date?
     @State private var gaugeTarget: Double = 0.5
     /// 針を止めた時刻。止めるまでは nil。
     @State private var stoppedAt: Date?
-    @State private var sequenceStep = 0
     @State private var verdict: Bool?
+    /// 駆け引きで出た結果。
+    @State private var encounterResult: EncounterResult?
 
     var body: some View {
         ZStack {
@@ -64,8 +65,8 @@ struct MissionView: View {
             mashGame(target: targetTaps, seconds: seconds)
         case .timing(let width, let speed):
             timingGame(width: width, speed: speed)
-        case .sequence(let order):
-            sequenceGame(order: order)
+        case .encounter(let encounter):
+            encounterGame(encounter)
         }
     }
 
@@ -151,66 +152,126 @@ struct MissionView: View {
         }
     }
 
-    // MARK: - 順番押し
+    // MARK: - 観察して選ぶ
 
-    private func sequenceGame(order: [QueueAction]) -> some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 8) {
-                ForEach(Array(order.enumerated()), id: \.offset) { index, action in
-                    Image(systemName: action.symbolName)
-                        .font(.system(size: 16))
-                        .frame(width: 38, height: 38)
-                        .background(index < sequenceStep ? AppTheme.stamp.opacity(0.2) : AppTheme.ink.opacity(0.06))
-                        .foregroundStyle(index < sequenceStep ? AppTheme.stamp : AppTheme.ink)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    /// 仕草だけを見せ、そこから読んで行動を決めてもらう。
+    /// 正体は書かないし、同じ相手でも結果は毎回ぶれる。
+    private func encounterGame(_ encounter: Encounter) -> some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(encounter.observations.enumerated()), id: \.offset) { _, behavior in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 10))
+                            .foregroundStyle(AppTheme.stamp)
+                            .padding(.top, 2)
+                        Text(behavior)
+                            .font(.footnote)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
                 }
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppTheme.ink.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 8)], spacing: 8) {
-                ForEach(QueueAction.allCases) { action in
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+                ForEach(EncounterAction.allCases) { action in
                     Button {
-                        if action == order[sequenceStep] {
-                            sequenceStep += 1
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            if sequenceStep >= order.count { finish(true) }
-                        } else {
-                            finish(false)
-                        }
+                        choose(action, in: encounter)
                     } label: {
                         VStack(spacing: 3) {
                             Image(systemName: action.symbolName)
-                            Text(action.label).font(.system(size: 10))
+                                .font(.system(size: 15))
+                            Text(action.label)
+                                .font(.system(size: 10, weight: .medium))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .frame(maxWidth: .infinity, minHeight: 54)
                     }
                     .buttonStyle(.bordered)
                     .tint(AppTheme.ink)
                 }
             }
         }
+        .foregroundStyle(AppTheme.ink)
+    }
+
+    private func choose(_ action: EncounterAction, in encounter: Encounter) {
+        let result = encounter.resolve(action)
+        encounterResult = result
+        finish(result.isGood)
     }
 
     // MARK: - 結果
 
+    @ViewBuilder
     private func result(success: Bool) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle")
-                .font(.system(size: 40))
-                .foregroundStyle(success ? AppTheme.stamp : Color.secondary)
+        if let encounterResult {
+            encounterOutcome(encounterResult)
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle")
+                    .font(.system(size: 40))
+                    .foregroundStyle(success ? AppTheme.stamp : Color.secondary)
 
-            Text(success ? "達成！" : "失敗")
-                .font(.title3.weight(.bold))
+                Text(success ? "達成！" : "失敗")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+
+                if success {
+                    Text("\(mission.reward)人 前へ進んだ　＋\(mission.coins)コイン")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("次のミッションに切り替わります")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// 駆け引きの顛末。何が起きたかを読ませる。
+    private func encounterOutcome(_ result: EncounterResult) -> some View {
+        VStack(spacing: 12) {
+            Text(headline(for: result.grade))
+                .font(.system(size: 12, weight: .black))
+                .tracking(3)
+                .foregroundStyle(tint(for: result.grade))
+
+            Text(result.message)
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(AppTheme.ink)
 
-            if success {
-                Text("\(mission.reward)人 前へ進んだ　＋\(mission.coins)コイン")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("次のミッションに切り替わります")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if result.advance != 0 {
+                Text(result.advance > 0 ? "＋\(result.advance)人" : "\(result.advance)人")
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundStyle(result.advance > 0 ? AppTheme.stamp : .secondary)
             }
+        }
+    }
+
+    private func headline(for grade: EncounterResult.Grade) -> String {
+        switch grade {
+        case .triumph: "大成功"
+        case .success: "成功"
+        case .failure: "失敗"
+        case .twist: "予想外"
+        }
+    }
+
+    private func tint(for grade: EncounterResult.Grade) -> Color {
+        switch grade {
+        case .triumph: AppTheme.stamp
+        case .success: Color(red: 0.36, green: 0.62, blue: 0.86)
+        case .failure: Color(red: 0.55, green: 0.55, blue: 0.58)
+        case .twist: Color(red: 0.72, green: 0.44, blue: 0.88)
         }
     }
 
@@ -233,9 +294,12 @@ struct MissionView: View {
 
         UINotificationFeedbackGenerator().notificationOccurred(success ? .success : .warning)
 
+        // 顛末を読ませたいので、駆け引きだけ少し長めに見せる。
+        let pause = encounterResult != nil ? 2.4 : (success ? 1.2 : 1.6)
+
         Task {
-            try? await Task.sleep(for: .seconds(success ? 1.2 : 1.6))
-            onFinish(success)
+            try? await Task.sleep(for: .seconds(pause))
+            onFinish(success, encounterResult)
         }
     }
 
