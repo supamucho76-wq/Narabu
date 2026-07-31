@@ -242,6 +242,25 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    /// 列の先に見える店が、進むほど大きくなること。
+    ///
+    /// 何のために並んでいるかが常に見えていないと、ただの道になってしまう。
+    func testDestinationGrowsAsYouApproach() {
+        func size(at ratio: Double) -> Double {
+            // QueueWorldView が使っているのと同じ式。
+            0.10 + pow(ratio, 1.7) * 0.62
+        }
+
+        var previous = 0.0
+        for step in stride(from: 0.0, through: 1.0, by: 0.1) {
+            let current = size(at: step)
+            XCTAssertGreaterThanOrEqual(current, previous, "進んだのに店が大きくならない")
+            previous = current
+        }
+
+        XCTAssertGreaterThan(size(at: 1.0), size(at: 0.0) * 4, "着く直前でも小さすぎる")
+    }
+
     /// どこに着いたのかが必ず言葉で分かること。
     func testEveryStageDescribesItsArrival() {
         for stage in StageCatalog.stages {

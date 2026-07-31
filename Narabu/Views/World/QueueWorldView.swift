@@ -61,6 +61,15 @@ struct QueueWorldView: View {
             time: time
         )
 
+        // 列の先にある店。進むほど大きくなり、何のために並んでいるかが常に見える。
+        drawDestination(
+            in: context,
+            size: size,
+            horizonY: horizonY,
+            progress: progress,
+            time: time
+        )
+
         drawQueue(
             in: context,
             size: size,
@@ -124,6 +133,96 @@ struct QueueWorldView: View {
             scroll: scroll,
             time: time
         )
+    }
+
+    // MARK: - 列の先にある店
+
+    /// 目的地を地平線に描く。
+    ///
+    /// 最初は遠くの点だが、進むほど大きくなる。
+    /// 「何のために並んでいるのか」が、道の先にずっと見えている状態を作る。
+    private func drawDestination(
+        in context: GraphicsContext,
+        size: CGSize,
+        horizonY: Double,
+        progress: Int,
+        time: Double
+    ) {
+        let ratio = min(1, max(0, Double(progress) / Double(max(1, stage.queueLength))))
+        // 遠近感に合わせて、近づくほど加速度的に大きく見える。
+        let nearness = pow(ratio, 1.7)
+        let width = size.width * (0.10 + nearness * 0.62)
+        let height = size.height * (0.07 + nearness * 0.34)
+
+        let rect = CGRect(
+            x: size.width / 2 - width / 2,
+            // 地平線より少し下に足元が来るようにして、道に立っているように見せる。
+            y: horizonY + size.height * 0.02 - height,
+            width: width,
+            height: height
+        )
+
+        LandmarkRenderer.draw(
+            stage: stage,
+            in: context,
+            rect: rect,
+            // 遠いうちは影で、近づくと色がついてくる。
+            silhouette: nearness < 0.12
+        )
+
+        drawApproachProps(in: context, size: size, horizonY: horizonY, nearness: nearness, time: time)
+    }
+
+    /// 店に近づくと、道の両脇に提灯とのぼりが増えてくる。
+    private func drawApproachProps(
+        in context: GraphicsContext,
+        size: CGSize,
+        horizonY: Double,
+        nearness: Double,
+        time: Double
+    ) {
+        guard nearness > 0.25 else { return }
+
+        let intensity = min(1, (nearness - 0.25) / 0.6)
+        let count = Int(intensity * 4) + 1
+
+        for index in 0..<count {
+            // 手前にあるものほど大きく、下に来る。
+            let depth = Double(index) / Double(max(1, count))
+            let y = horizonY + size.height * (0.03 + depth * 0.16)
+            let scale = 0.35 + depth * 0.85
+            let offset = size.width * (0.14 + depth * 0.2)
+            let sway = sin(time * 1.4 + Double(index)) * size.width * 0.004
+
+            for side in [-1.0, 1.0] {
+                let x = size.width / 2 + side * offset + sway
+
+                // 提灯
+                let r = size.width * 0.035 * scale
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x - r / 2, y: y, width: r, height: r * 1.3)),
+                    with: .color(Color(red: 0.90, green: 0.25, blue: 0.18).opacity(0.9 * intensity))
+                )
+                // 灯り
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x - r * 0.22, y: y + r * 0.35,
+                                           width: r * 0.44, height: r * 0.5)),
+                    with: .color(Color(red: 1.0, green: 0.88, blue: 0.55).opacity(0.75 * intensity))
+                )
+
+                // のぼり
+                let poleHeight = size.width * 0.12 * scale
+                context.fill(
+                    Path(CGRect(x: x + side * r * 1.1, y: y, width: max(1, r * 0.12), height: poleHeight)),
+                    with: .color(.white.opacity(0.5 * intensity))
+                )
+                context.fill(
+                    Path(CGRect(x: x + side * r * 1.1, y: y + poleHeight * 0.1,
+                                width: r * 0.5, height: poleHeight * 0.55)),
+                    with: .color(Color(red: 0.86, green: 0.20, blue: 0.16).opacity(0.85 * intensity))
+                )
+            }
+        }
     }
 
     // MARK: - 列
