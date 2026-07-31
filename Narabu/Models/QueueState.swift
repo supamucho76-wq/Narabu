@@ -152,12 +152,17 @@ struct QueueState: Codable, Equatable {
         stageNumber = try container.decodeIfPresent(Int.self, forKey: .stageNumber) ?? 1
         lap = try container.decodeIfPresent(Int.self, forKey: .lap) ?? 1
         stageStartedAt = try container.decodeIfPresent(Date.self, forKey: .stageStartedAt) ?? now
-        anchorDate = try container.decodeIfPresent(Date.self, forKey: .anchorDate) ?? now
         // ステージ制より前の進捗は数える対象が違うので、引き継がず最初から並び直す。
+        //
+        // このとき基準時刻も一緒に今へ寄せる。古い時刻を残したままだと、
+        // 前回からの経過ぶんが一気に加算されて、開いた瞬間にステージが終わってしまう。
         let isBeforeStages = !container.contains(.stageNumber)
         anchorProgress = isBeforeStages
             ? 0
             : (try container.decodeIfPresent(Int.self, forKey: .anchorProgress) ?? 0)
+        anchorDate = isBeforeStages
+            ? now
+            : (try container.decodeIfPresent(Date.self, forKey: .anchorDate) ?? now)
 
         totalCutIns = try container.decodeIfPresent(Int.self, forKey: .totalCutIns) ?? 0
         totalSkipped = try container.decodeIfPresent(Int.self, forKey: .totalSkipped) ?? 0

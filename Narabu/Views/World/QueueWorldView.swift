@@ -138,7 +138,10 @@ struct QueueWorldView: View {
 
     // MARK: - 景色
 
-    /// 場所が切り替わる境目では、前の景色を薄く重ねて繋ぐ。
+    /// 場所が切り替わる境目では、前の景色に新しい景色を重ねて繋ぐ。
+    ///
+    /// 下地は必ず不透明で描く。以前は新しい景色を薄いまま描き始めていたため、
+    /// 前の景色がない場面では何も描かれず、画面が真っ白になっていた。
     private func drawScenery(
         progress: Int,
         in context: GraphicsContext,
@@ -147,23 +150,33 @@ struct QueueWorldView: View {
         scroll: Double,
         time: Double
     ) {
+        let scene = stage.scene(atProgress: progress)
         let blend = stage.sceneBlend(atProgress: progress)
+        // 繋ぎの下地。前の景色がなければ、今の景色をそのまま下地にする。
+        let base = stage.previousScene(atProgress: progress) ?? scene
 
-        if blend < 1, let previous = stage.previousScene(atProgress: progress) {
-            SceneryRenderer.draw(
-                kind: previous,
-                in: context,
-                size: size,
-                horizonY: horizonY,
-                scroll: scroll,
-                time: time
-            )
-        }
+        // 何があっても白い画面にならないよう、まず地の色で塗りつぶす。
+        context.fill(
+            Path(CGRect(origin: .zero, size: size)),
+            with: .color(base.skyColors.bottom)
+        )
+
+        SceneryRenderer.draw(
+            kind: base,
+            in: context,
+            size: size,
+            horizonY: horizonY,
+            scroll: scroll,
+            time: time
+        )
+
+        // 切り替わり中だけ、新しい景色を上から重ねていく。
+        guard blend > 0, scene != base else { return }
 
         var layer = context
         layer.opacity = blend
         SceneryRenderer.draw(
-            kind: stage.scene(atProgress: progress),
+            kind: scene,
             in: layer,
             size: size,
             horizonY: horizonY,

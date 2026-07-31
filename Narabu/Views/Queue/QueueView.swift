@@ -32,6 +32,9 @@ struct QueueView: View {
 
     var body: some View {
         ZStack {
+            // Canvasが何らかの理由で描けなくても、白い画面にはしない。
+            store.scene.skyColors.bottom.ignoresSafeArea()
+
             world
 
             VStack(spacing: 0) {
@@ -60,13 +63,12 @@ struct QueueView: View {
                 }
                 .transition(.opacity)
             } else if let mission = activeMission {
-                MissionView(mission: mission) { success, encounter in
-                    store.completeMission(mission, success: success, encounter: encounter)
+                MissionView(mission: mission) { success in
+                    // 成功でも失敗でも、必ず同じ後始末を通してから画面を閉じる。
+                    store.completeMission(mission, success: success)
                     activeMission = nil
                     sound.play(success ? .clear : .fail)
-
-                    let gained = encounter?.advance ?? (success ? mission.reward : 0)
-                    if gained > 0 { pulse(people: gained) }
+                    if success { pulse(people: mission.reward) }
                 }
                 .transition(.opacity)
             }

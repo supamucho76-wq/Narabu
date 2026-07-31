@@ -17,6 +17,8 @@ struct SeededGenerator: RandomNumberGenerator {
     }
 }
 
+/// QueueStore は画面と同じ場所で動くので、試験もそこに合わせる。
+@MainActor
 final class QueueEngineTests: XCTestCase {
     private let noon = Date(timeIntervalSince1970: 1_760_000_000)
 
@@ -63,17 +65,55 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertLessThan(secondsPerPerson, 240, "遅すぎると止まって見える")
     }
 
-    /// イントロと初回ガチャで数分かかっても、ステージ1が勝手に終わらないこと。
-    func testFirstStageSurvivesTheOpeningSequence() {
-        let openingMinutes = 5.0
-        let progress = QueueEngine.progress(
-            anchorProgress: 0,
-            anchorDate: noon,
-            at: noon.addingTimeInterval(openingMinutes * 60),
-            limit: StageCatalog.stages[0].queueLength
-        )
-        XCTAssertLessThan(progress, StageCatalog.stages[0].queueLength,
-                          "開始前の数分でステージ1がクリアされてしまう")
+    /// どれだけ放置しても、自動前進だけではステージが終わらないこと。
+    ///
+    /// ここが崩れると、久しぶりに開いた人がいきなりクリア画面を見ることになる。
+    func testStagesNeverClearThemselvesWhileAway() {
+        let store = QueueStore(fileURL: temporaryStateFile())
+
+        for away in [5.0, 60.0, 60 * 24.0, 60 * 24 * 30.0] {
+            store.overrideForTesting(anchorProgress: 0, anchorDate: noon, now: noon.addingTimeInterval(away * 60))
+
+            XCTAssertGreaterThan(store.remaining, 0,
+                                 "\(Int(away))分離れただけでステージが終わっている")
+            XCTAssertFalse(store.hasClearedStage)
+            XCTAssertNil(store.clearStage(), "操作していないのにクリアが成立している")
+        }
+    }
+
+    /// 離れていた時間が長くても、進みは半分までに抑えること。
+    func testOfflineProgressIsCapped() {
+        let store = QueueStore(fileURL: temporaryStateFile())
+        let length = store.stage.queueLength
+
+        store.overrideForTesting(anchorProgress: 0, anchorDate: noon, now: noon.addingTimeInterval(86_400))
+        XCTAssertLessThanOrEqual(store.progress, length / 2 + 1, "放置だけで進みすぎている")
+    }
+
+    /// 操作で先頭まで到達したときは、ちゃんとクリアできること。
+    func testReachingTheFrontByPlayingStillClears() {
+        let store = QueueStore(fileURL: temporaryStateFile())
+        let length = store.stage.queueLength
+
+        store.overrideForTesting(anchorProgress: length, anchorDate: noon, now: noon)
+        XCTAssertEqual(store.remaining, 0)
+        XCTAssertTrue(store.hasClearedStage)
+        XCTAssertNotNil(store.clearStage())
+    }
+
+    func testRemainingNeverGoesNegative() {
+        let store = QueueStore(fileURL: temporaryStateFile())
+
+        for progress in [-50, 0, 5, 9_999] {
+            store.overrideForTesting(anchorProgress: progress, anchorDate: noon, now: noon.addingTimeInterval(9_999))
+            XCTAssertGreaterThanOrEqual(store.remaining, 0)
+            XCTAssertGreaterThanOrEqual(store.progress, 0)
+        }
+    }
+
+    private func temporaryStateFile() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("narabu-test-\(UUID().uuidString).json")
     }
 
     func testProgressStopsAtTheFrontOfTheStage() {
@@ -160,92 +200,30 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
-    /// 残しているのは、指を動かすものと観察して選ぶものだけ。
-    func testAllMissionKindsCanAppear() {
-        var seenMash = false
+    /// 残しているのは、操作と結果が直に結びつくものだけ。
+    func testOnlyDirectMissionsRemain() {
         var seenTiming = false
-        var seenEncounter = false
+        var seenMash = false
 
         for seed in 0..<300 {
             switch MissionFactory.make(seed: seed, stage: StageCatalog.stages[3]).kind {
-            case .mash: seenMash = true
             case .timing: seenTiming = true
-            case .encounter: seenEncounter = true
+            case .mash: seenMash = true
             }
         }
 
-        XCTAssertTrue(seenMash && seenTiming && seenEncounter, "出てこないミッションの種類がある")
+        XCTAssertTrue(seenTiming, "タイミングが出てこない")
+        XCTAssertTrue(seenMash, "連打が出てこない")
     }
 
-    // MARK: - 観察の駆け引き
-
-    /// 仕草だけを見せ、正体そのものは書かないこと。
-    func testObservationsNeverSpellOutTheAnswer() {
-        let answers = ["急いでいる", "短気", "ノリがいい", "警戒心", "筋トレ", "イヤホン", "子ども連れ", "係員を気にして"]
-
-        for trait in EncounterTrait.allCases {
-            for behavior in trait.behaviors {
-                for answer in answers {
-                    XCTAssertFalse(behavior.contains(answer),
-                                   "仕草に答えがそのまま書かれている：\(behavior)")
+    /// タイミングは進むほど難しくなるが、狙えない幅にはしない。
+    func testTimingStaysPlayableOnLaterStages() {
+        for stage in StageCatalog.stages {
+            for seed in 0..<200 {
+                if case .timing(let width, let speed) = MissionFactory.make(seed: seed, stage: stage).kind {
+                    XCTAssertGreaterThanOrEqual(width, 0.10, "\(stage.name)の当たり範囲が狭すぎる")
+                    XCTAssertLessThanOrEqual(speed, 2.0, "\(stage.name)の針が速すぎる")
                 }
-            }
-        }
-    }
-
-    func testEncounterShowsThreeObservations() {
-        for seed in 0..<200 {
-            let encounter = Encounter.make(seed: seed)
-            XCTAssertEqual(encounter.observations.count, 3)
-            XCTAssertEqual(Set(encounter.observations).count, 3, "同じ仕草が重複して出ている")
-        }
-    }
-
-    /// 相性が良い行動が複数あり、正解がひとつに固定されないこと。
-    func testEachTraitHasSeveralWorkableActions() {
-        for trait in EncounterTrait.allCases {
-            XCTAssertGreaterThanOrEqual(trait.favorable.count, 2, "\(trait)の正解が1つしかない")
-            XCTAssertTrue(trait.favorable.isDisjoint(with: trait.forbidden),
-                          "\(trait)で最適解と地雷が重なっている")
-        }
-    }
-
-    /// 同じ相手に同じ手でも、結果に幅があること。
-    func testEncounterOutcomesVary() {
-        var grades: Set<EncounterResult.Grade> = []
-
-        for seed in 0..<400 {
-            let encounter = Encounter.make(seed: seed)
-            for action in EncounterAction.allCases {
-                grades.insert(encounter.resolve(action).grade)
-            }
-        }
-
-        XCTAssertTrue(grades.contains(.triumph))
-        XCTAssertTrue(grades.contains(.success))
-        XCTAssertTrue(grades.contains(.failure))
-        XCTAssertTrue(grades.contains(.twist), "予想外の展開が起きていない")
-    }
-
-    /// やってはいけない手には、ちゃんと罰があること。
-    func testForbiddenActionsHurt() {
-        for trait in EncounterTrait.allCases {
-            let encounter = Encounter(trait: trait, observations: trait.behaviors, seed: 5)
-            for action in trait.forbidden {
-                let result = encounter.resolve(action)
-                // まれに予想外へ転がるので、そこは咎めない。
-                if result.grade == .failure {
-                    XCTAssertGreaterThan(result.alertDelta, 0, "\(trait)への地雷なのに警戒が上がらない")
-                }
-            }
-        }
-    }
-
-    func testEveryEncounterResultHasSomethingToRead() {
-        for seed in 0..<200 {
-            let encounter = Encounter.make(seed: seed)
-            for action in EncounterAction.allCases {
-                XCTAssertFalse(encounter.resolve(action).message.isEmpty)
             }
         }
     }

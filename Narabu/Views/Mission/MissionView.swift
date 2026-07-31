@@ -1,11 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// ミッションを遊ぶ画面。5〜20秒で終わる短いものだけを扱う。
+/// ミッションを遊ぶ画面。数秒で終わる短いものだけを扱う。
+///
+/// 失敗しても必ずここから出られるようにする。
+/// 自動で閉じる処理が働かなくても、ボタンで戻れる道を必ず残しておく。
 struct MissionView: View {
     let mission: Mission
-    /// 成否と、駆け引きで決まった結果を親に返す。列を進めるのは親の仕事。
-    let onFinish: (Bool, EncounterResult?) -> Void
+    /// 成否を親に返す。列を進めるのは親の仕事。
+    let onFinish: (Bool) -> Void
 
     @State private var taps = 0
     @State private var deadline: Date?
@@ -13,8 +16,8 @@ struct MissionView: View {
     /// 針を止めた時刻。止めるまでは nil。
     @State private var stoppedAt: Date?
     @State private var verdict: Bool?
-    /// 駆け引きで出た結果。
-    @State private var encounterResult: EncounterResult?
+    /// 二重に閉じないための印。
+    @State private var hasClosed = false
 
     var body: some View {
         ZStack {
@@ -25,6 +28,7 @@ struct MissionView: View {
 
                 if let verdict {
                     result(success: verdict)
+                    closeButton(success: verdict)
                 } else {
                     content
                 }
@@ -61,12 +65,56 @@ struct MissionView: View {
     @ViewBuilder
     private var content: some View {
         switch mission.kind {
-        case .mash(let targetTaps, let seconds):
-            mashGame(target: targetTaps, seconds: seconds)
         case .timing(let width, let speed):
             timingGame(width: width, speed: speed)
-        case .encounter(let encounter):
-            encounterGame(encounter)
+        case .mash(let targetTaps, let seconds):
+            mashGame(target: targetTaps, seconds: seconds)
+        }
+    }
+
+    // MARK: - タイミング
+
+    /// 針の位置は時刻だけから決まるので、毎フレーム状態を書き換える必要がない。
+    private func needlePosition(at date: Date, speed: Double) -> Double {
+        let t = date.timeIntervalSince1970 * speed
+        // 端で折り返す往復運動。
+        return 1 - abs(t.truncatingRemainder(dividingBy: 2) - 1)
+    }
+
+    private func timingGame(width: Double, speed: Double) -> some View {
+        VStack(spacing: 16) {
+            TimelineView(.animation) { timeline in
+                let position = needlePosition(at: stoppedAt ?? timeline.date, speed: speed)
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(AppTheme.ink.opacity(0.10))
+
+                        Capsule()
+                            .fill(AppTheme.stamp.opacity(0.35))
+                            .frame(width: geometry.size.width * width)
+                            .offset(x: geometry.size.width * (gaugeTarget - width / 2))
+
+                        Capsule()
+                            .fill(AppTheme.ink)
+                            .frame(width: 4)
+                            .offset(x: geometry.size.width * position - 2)
+                    }
+                }
+                .frame(height: 34)
+            }
+
+            Button {
+                let now = Date()
+                stoppedAt = now
+                finish(abs(needlePosition(at: now, speed: speed) - gaugeTarget) <= width / 2)
+            } label: {
+                Text("止める")
+                    .font(.title3.weight(.bold))
+                    .frame(maxWidth: .infinity, minHeight: 60)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(AppTheme.stamp)
         }
     }
 
@@ -106,172 +154,41 @@ struct MissionView: View {
         .foregroundStyle(AppTheme.ink)
     }
 
-    // MARK: - タイミング
-
-    /// 針の位置は時刻だけから決まるので、毎フレーム状態を書き換える必要がない。
-    private func needlePosition(at date: Date, speed: Double) -> Double {
-        let t = date.timeIntervalSince1970 * speed
-        // 端で折り返す往復運動。
-        return 1 - abs(t.truncatingRemainder(dividingBy: 2) - 1)
-    }
-
-    private func timingGame(width: Double, speed: Double) -> some View {
-        VStack(spacing: 16) {
-            TimelineView(.animation) { timeline in
-                let position = needlePosition(at: stoppedAt ?? timeline.date, speed: speed)
-
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(AppTheme.ink.opacity(0.10))
-
-                        Capsule()
-                            .fill(AppTheme.stamp.opacity(0.30))
-                            .frame(width: geometry.size.width * width)
-                            .offset(x: geometry.size.width * (gaugeTarget - width / 2))
-
-                        Capsule()
-                            .fill(AppTheme.ink)
-                            .frame(width: 4)
-                            .offset(x: geometry.size.width * position - 2)
-                    }
-                }
-                .frame(height: 34)
-            }
-
-            Button {
-                let now = Date()
-                stoppedAt = now
-                finish(abs(needlePosition(at: now, speed: speed) - gaugeTarget) <= width / 2)
-            } label: {
-                Text("止める")
-                    .font(.title3.weight(.bold))
-                    .frame(maxWidth: .infinity, minHeight: 60)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.stamp)
-        }
-    }
-
-    // MARK: - 観察して選ぶ
-
-    /// 仕草だけを見せ、そこから読んで行動を決めてもらう。
-    /// 正体は書かないし、同じ相手でも結果は毎回ぶれる。
-    private func encounterGame(_ encounter: Encounter) -> some View {
-        VStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(encounter.observations.enumerated()), id: \.offset) { _, behavior in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "eye")
-                            .font(.system(size: 10))
-                            .foregroundStyle(AppTheme.stamp)
-                            .padding(.top, 2)
-                        Text(behavior)
-                            .font(.footnote)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                }
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.ink.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
-                ForEach(EncounterAction.allCases) { action in
-                    Button {
-                        choose(action, in: encounter)
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: action.symbolName)
-                                .font(.system(size: 15))
-                            Text(action.label)
-                                .font(.system(size: 10, weight: .medium))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 54)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(AppTheme.ink)
-                }
-            }
-        }
-        .foregroundStyle(AppTheme.ink)
-    }
-
-    private func choose(_ action: EncounterAction, in encounter: Encounter) {
-        let result = encounter.resolve(action)
-        encounterResult = result
-        finish(result.isGood)
-    }
-
     // MARK: - 結果
 
-    @ViewBuilder
     private func result(success: Bool) -> some View {
-        if let encounterResult {
-            encounterOutcome(encounterResult)
-        } else {
-            VStack(spacing: 12) {
-                Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle")
-                    .font(.system(size: 40))
-                    .foregroundStyle(success ? AppTheme.stamp : Color.secondary)
+        VStack(spacing: 10) {
+            Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle")
+                .font(.system(size: 38))
+                .foregroundStyle(success ? AppTheme.stamp : Color.secondary)
 
-                Text(success ? "達成！" : "失敗")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-
-                if success {
-                    Text("\(mission.reward)人 前へ進んだ　＋\(mission.coins)コイン")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("次のミッションに切り替わります")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    /// 駆け引きの顛末。何が起きたかを読ませる。
-    private func encounterOutcome(_ result: EncounterResult) -> some View {
-        VStack(spacing: 12) {
-            Text(headline(for: result.grade))
-                .font(.system(size: 12, weight: .black))
-                .tracking(3)
-                .foregroundStyle(tint(for: result.grade))
-
-            Text(result.message)
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(success ? "成功" : "惜しい")
+                .font(.title3.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
 
-            if result.advance != 0 {
-                Text(result.advance > 0 ? "＋\(result.advance)人" : "\(result.advance)人")
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .foregroundStyle(result.advance > 0 ? AppTheme.stamp : .secondary)
+            if success {
+                Text("\(mission.reward)人 前へ進んだ　＋\(mission.coins)コイン")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("すぐ次に挑戦できます")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private func headline(for grade: EncounterResult.Grade) -> String {
-        switch grade {
-        case .triumph: "大成功"
-        case .success: "成功"
-        case .failure: "失敗"
-        case .twist: "予想外"
-        }
-    }
-
-    private func tint(for grade: EncounterResult.Grade) -> Color {
-        switch grade {
-        case .triumph: AppTheme.stamp
-        case .success: Color(red: 0.36, green: 0.62, blue: 0.86)
-        case .failure: Color(red: 0.55, green: 0.55, blue: 0.58)
-        case .twist: Color(red: 0.72, green: 0.44, blue: 0.88)
+    /// 自動で閉じられなかったときのための、確実な逃げ道。
+    private func closeButton(success: Bool) -> some View {
+        Button {
+            close(success: success)
+        } label: {
+            Text("続ける")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(AppTheme.ink)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
@@ -294,13 +211,18 @@ struct MissionView: View {
 
         UINotificationFeedbackGenerator().notificationOccurred(success ? .success : .warning)
 
-        // 顛末を読ませたいので、駆け引きだけ少し長めに見せる。
-        let pause = encounterResult != nil ? 2.4 : (success ? 1.2 : 1.6)
-
+        // 少し見せてから自動で戻る。届かなくてもボタンで戻れる。
         Task {
-            try? await Task.sleep(for: .seconds(pause))
-            onFinish(success, encounterResult)
+            try? await Task.sleep(for: .seconds(1.4))
+            close(success: success)
         }
+    }
+
+    /// 成功・失敗のどちらも必ずここを通して閉じる。
+    private func close(success: Bool) {
+        guard !hasClosed else { return }
+        hasClosed = true
+        onFinish(success)
     }
 
     private func progressTrack(ratio: Double) -> some View {

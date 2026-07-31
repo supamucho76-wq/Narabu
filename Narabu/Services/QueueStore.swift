@@ -28,13 +28,21 @@ final class QueueStore {
     }
 
     /// 最後尾から何人ぶん進んだか。
+    ///
+    /// 自動で進むぶんには2つの制限をかけている。
+    /// ひとつは、離れていた時間がいくら長くてもステージの半分までしか進まないこと。
+    /// もうひとつは、自動では最後の1人を越えられないこと。
+    /// この2つがないと、しばらくぶりに開いただけでステージが終わってしまう。
     var progress: Int {
-        min(stage.queueLength, QueueEngine.progress(
-            anchorProgress: state.anchorProgress,
-            anchorDate: state.anchorDate,
-            at: now,
-            limit: stage.queueLength
-        ))
+        let earned = state.anchorProgress
+        // 操作で先頭まで来ているときだけ、クリアを認める。
+        guard earned < stage.queueLength else { return stage.queueLength }
+
+        let served = QueueEngine.servedCount(from: state.anchorDate, to: now)
+        let pushedBack = QueueEngine.cutInCount(from: state.anchorDate, to: now)
+        let drift = min(max(0, served - pushedBack), max(1, stage.queueLength / 2))
+
+        return min(stage.queueLength - 1, max(0, earned + drift))
     }
 
     /// 先頭までの残り人数。
@@ -218,6 +226,13 @@ final class QueueStore {
         state = .initial(now: now)
         save()
     }
+
+    /// 試験のために、進み具合と時刻を直に差し替える。
+    func overrideForTesting(anchorProgress: Int, anchorDate: Date, now: Date) {
+        state.anchorProgress = anchorProgress
+        state.anchorDate = anchorDate
+        self.now = now
+    }
     #endif
 
     // MARK: - ステージの進行
@@ -225,7 +240,8 @@ final class QueueStore {
     /// ステージをクリアして報酬を受け取り、次のステージへ進む。
     @discardableResult
     func clearStage() -> StageClearResult? {
-        guard hasClearedStage else { return nil }
+        // 表示だけ先頭に見えていても、操作で到達していなければクリアにしない。
+        guard hasClearedStage, state.anchorProgress >= stage.queueLength else { return nil }
 
         let cleared = stage
         let isFirstTime = !state.clearedStages.contains(cleared.id)
@@ -498,20 +514,14 @@ final class QueueStore {
     }
 
     /// ミッションの結果を反映して、次のミッションを用意する。
-    ///
-    /// 駆け引きだけは進む人数が選んだ行動で決まるので、その結果を優先する。
-    func completeMission(_ mission: Mission, success: Bool, encounter: EncounterResult? = nil) {
-        let advance = encounter?.advance ?? (success ? mission.reward : mission.consolationReward)
+    func completeMission(_ mission: Mission, success: Bool) {
+        let advance = success ? mission.reward : mission.consolationReward
         let coins = success ? mission.coins : mission.consolationCoins
 
         state.coins += coins
         combo = success ? combo + 1 : 0
         // ミッションをやり切ると気持ちが切り替わり、集中が大きく戻る。
         restoreFocus(success ? 45 : 20)
-
-        if let encounter {
-            changeAlert(by: encounter.alertDelta)
-        }
 
         if advance != 0 {
             moveAnchor(to: min(stage.queueLength, max(0, progress + advance)))

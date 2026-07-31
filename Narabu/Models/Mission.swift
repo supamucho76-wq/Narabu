@@ -3,15 +3,14 @@ import Foundation
 /// 列の中で起きる短い出来事。
 ///
 /// アイテムが尽きても手持ち無沙汰にならないよう、常にひとつ用意しておく。
-/// 読ませて答えさせるものは置かない。指を動かして数秒で終わるものだけにする。
+/// 操作と結果が直に結びつくものだけを置く。
+/// 読ませて答えさせるものや、正解を覚えて押すだけのものは面白くならなかったので入れない。
 struct Mission: Identifiable, Equatable, Sendable {
     enum Kind: Equatable, Sendable {
+        /// 動くゲージを当たり範囲で止める。指の反応がそのまま結果になる。
+        case timing(targetWidth: Double, speed: Double)
         /// 制限時間内に指定回数タップする。
         case mash(taps: Int, seconds: Double)
-        /// 動くゲージを当たり範囲で止める。
-        case timing(targetWidth: Double, speed: Double)
-        /// 前の人の仕草を見て、どう出るかを選ぶ。
-        case encounter(Encounter)
     }
 
     let id: UUID
@@ -37,38 +36,31 @@ enum MissionFactory {
         // 進むほど、少しだけ多く報われる。
         let scale = max(1, stage.queueLength / 60)
 
-        switch Int(QueueEngine.unitRandom(seed, salt: 0x3A11) * 3) {
-        case 0:
-            let taps = 12 + Int(QueueEngine.unitRandom(seed, salt: 0x4B22) * 10)
-            return Mission(
-                id: UUID(),
-                title: "人混みを抜ける",
-                instruction: "\(taps)回タップして、隙間をこじ開ける",
-                kind: .mash(taps: taps, seconds: 6),
-                reward: 3 + scale,
-                coins: 24
-            )
-
-        case 1:
+        // タイミングのほうが手応えがあるので、こちらを多めに出す。
+        if QueueEngine.unitRandom(seed, salt: 0x3A11) < 0.65 {
+            // 進むほど、当たり範囲が狭く速くなる。
+            let difficulty = min(0.5, Double(stage.id - 1) * 0.06)
             return Mission(
                 id: UUID(),
                 title: "詰めるタイミング",
                 instruction: "列が動いた瞬間に止める",
-                kind: .timing(targetWidth: 0.18, speed: 1.15),
+                kind: .timing(
+                    targetWidth: max(0.10, 0.22 - difficulty * 0.2),
+                    speed: 1.0 + difficulty
+                ),
                 reward: 4 + scale,
                 coins: 30
             )
-
-        default:
-            // 進む人数は選んだ行動の結果で決まるので、ここでは目安だけ持たせる。
-            return Mission(
-                id: UUID(),
-                title: "前の人を観察する",
-                instruction: "仕草から人柄を読んで、どう出るか決める",
-                kind: .encounter(Encounter.make(seed: seed)),
-                reward: 4 + scale,
-                coins: 32
-            )
         }
+
+        let taps = 12 + Int(QueueEngine.unitRandom(seed, salt: 0x4B22) * 10)
+        return Mission(
+            id: UUID(),
+            title: "人混みを抜ける",
+            instruction: "\(taps)回タップして、隙間をこじ開ける",
+            kind: .mash(taps: taps, seconds: 6),
+            reward: 3 + scale,
+            coins: 24
+        )
     }
 }
