@@ -16,18 +16,16 @@ struct QueueView: View {
     @State private var reaction: ActionOutcome?
     @State private var reactionToken = 0
     @State private var disturbance: Double = 0
-    @State private var overtake: OvertakeRun?
     @State private var gachaMode: GachaView.Mode?
     @State private var clearResult: StageClearResult?
     @State private var activeMission: Mission?
-    @State private var advancePulse: AdvancePulse?
+    /// 前へ進んでいる最中の演出。終わるまで操作を受け付けない。
+    @State private var surge: Surge?
     @State private var isShowingVoicePermission = false
-    /// 成功した瞬間に画面中央へ大きく出す人数。
-    @State private var gainBanner: Int?
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
     private var isBusy: Bool {
-        overtake != nil || activeMission != nil || store.pendingEvent != nil
+        surge != nil || activeMission != nil || store.pendingEvent != nil
     }
 
     var body: some View {
@@ -49,7 +47,7 @@ struct QueueView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
-            .opacity(overtake == nil ? 1 : 0.2)
+            .opacity(surge == nil ? 1 : 0.25)
             .allowsHitTesting(!isBusy)
             .animation(.easeInOut(duration: 0.2), value: isBusy)
 
@@ -57,18 +55,24 @@ struct QueueView: View {
 
             if let event = store.pendingEvent {
                 EventView(event: event) { choice in
+                    let before = store.remaining
                     store.resolveEvent(choice)
                     sound.play(choice.advance >= 0 ? .success : .fail)
-                    if choice.advance > 0 { pulse(people: choice.advance) }
+                    if choice.advance > 0 {
+                        surgeForward(people: choice.advance, from: before)
+                    }
                 }
                 .transition(.opacity)
             } else if let mission = activeMission {
                 MissionView(mission: mission) { success in
                     // 成功でも失敗でも、必ず同じ後始末を通してから画面を閉じる。
+                    let before = store.remaining
                     store.completeMission(mission, success: success)
                     activeMission = nil
                     sound.play(success ? .clear : .fail)
-                    if success { pulse(people: mission.reward) }
+                    if success {
+                        surgeForward(people: mission.reward, from: before)
+                    }
                 }
                 .transition(.opacity)
             }
@@ -100,7 +104,6 @@ struct QueueView: View {
             VoicePermissionView()
                 .presentationDetents([.large])
         }
-        .animation(.snappy(duration: 0.25), value: gainBanner)
         .fullScreenCover(item: $gachaMode) { mode in
             GachaView(mode: mode, onDraw: { draw(mode) }, onFinish: { gachaMode = nil })
         }
@@ -129,10 +132,10 @@ struct QueueView: View {
             anchorProgress: store.state.anchorProgress,
             anchorDate: store.state.anchorDate,
             disturbance: disturbance,
-            overtake: overtake,
-            advancePulse: advancePulse,
+            surge: surge,
+
             // 吹き出しは同時にひとつだけ。反応が出ているあいだは前の人が黙る。
-            silencesRemark: reaction != nil || gainBanner != nil,
+            silencesRemark: reaction != nil || surge != nil,
             onTapPersonAhead: {}
         )
         .ignoresSafeArea()
@@ -151,16 +154,7 @@ struct QueueView: View {
                 gachaCorner
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("あと")
-                Text(store.remaining, format: .number)
-                    .font(.system(size: 46, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(countsDown: true))
-                    .animation(.snappy, value: store.remaining)
-                Text("人")
-            }
-            .font(.caption.weight(.medium))
+            remainingLine
 
             progressBar
 
@@ -194,6 +188,33 @@ struct QueueView: View {
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.65), radius: 5, y: 1)
         .padding(.top, 0)
+    }
+
+    /// 残り人数。進んでいる最中は、演出に合わせて数字が減っていく。
+    ///
+    /// 内部の数はすでに減っているが、いきなり飛ぶと何が起きたか分からない。
+    @ViewBuilder
+    private var remainingLine: some View {
+        if let surge {
+            TimelineView(.animation) { timeline in
+                remainingText(surge.displayedRemaining(at: timeline.date))
+            }
+        } else {
+            remainingText(store.remaining)
+        }
+    }
+
+    private func remainingText(_ value: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text("あと")
+            Text(max(0, value), format: .number)
+                .font(.system(size: 46, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(countsDown: true))
+                .animation(.snappy, value: value)
+            Text("人")
+        }
+        .font(.caption.weight(.medium))
     }
 
     /// ゲージが傾いているときだけ、何が起きるかを教える。
@@ -263,21 +284,23 @@ struct QueueView: View {
                     Label("無料ガチャ", systemImage: "gift.fill")
                         .font(.system(size: 10, weight: .bold))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
                 .background(AppTheme.stamp)
                 .clipShape(Capsule())
                 .shadow(color: AppTheme.stamp.opacity(0.6), radius: 6)
             }
+            .buttonStyle(GameButtonStyle())
         } else if store.canDrawWithTicket {
             Button { gachaMode = .ticket } label: {
-                Label("\(store.state.gachaTickets)", systemImage: "ticket.fill")
+                Label("チケット\(store.state.gachaTickets)", systemImage: "ticket.fill")
                     .font(.system(size: 10, weight: .bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
                     .background(Color(red: 0.30, green: 0.48, blue: 0.72))
                     .clipShape(Capsule())
             }
+            .buttonStyle(GameButtonStyle())
         } else if let cooldown = store.freeGachaCooldown {
             Label(GachaMachine.countdownLabel(cooldown), systemImage: "clock")
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
@@ -285,17 +308,39 @@ struct QueueView: View {
         }
     }
 
-    /// 進んだ瞬間だけ、画面の真ん中に大きく出す。
+    /// 進んでいる最中、画面の真ん中で人数が増えていくのを見せる。
+    ///
+    /// 抜いた人数が多いほど大きく、強い段階では見出しも付く。
     @ViewBuilder
     private var gainBannerView: some View {
-        if let gainBanner {
-            Text("＋\(gainBanner)人")
-                .font(.system(size: 62, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
+        if let surge {
+            TimelineView(.animation) { timeline in
+                let counted = surge.countedSoFar(at: timeline.date)
+                let done = surge.isFinished(at: timeline.date)
+
+                VStack(spacing: 2) {
+                    if let headline = surge.tier.headline {
+                        Text(headline)
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundStyle(Color(red: 1.0, green: 0.86, blue: 0.34))
+                    }
+                    Text("＋\(counted)人")
+                        .font(.system(size: surge.tier.bannerSize, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                    if let name = surge.vehicleName {
+                        Text(name)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
                 .shadow(color: AppTheme.stamp.opacity(0.9), radius: 12)
-                .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
-                .allowsHitTesting(false)
+                .shadow(color: .black.opacity(0.55), radius: 4, y: 2)
+                .scaleEffect(done ? 1.08 : 1)
+                .opacity(done ? 0 : 1)
+                .animation(.easeOut(duration: 0.25), value: done)
+            }
+            .allowsHitTesting(false)
         }
     }
 
@@ -413,11 +458,14 @@ struct QueueView: View {
                         .font(.system(size: 10, weight: .bold))
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
                 .background(Color(red: 1.0, green: 0.88, blue: 0.52))
                 .foregroundStyle(AppTheme.ink)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+            .buttonStyle(GameButtonStyle())
+            .disabled(isBusy)
             .padding(.bottom, 6)
         }
     }
@@ -452,12 +500,13 @@ struct QueueView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
                     .background(AppTheme.paper.opacity(0.94))
                     .foregroundStyle(AppTheme.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
-                .disabled(store.hasClearedStage)
+                .buttonStyle(GameButtonStyle())
+                .disabled(store.hasClearedStage || isBusy)
             }
         }
     }
@@ -521,6 +570,7 @@ struct QueueView: View {
     private func perform(_ action: QueueAction) {
         guard !isBusy else { return }
 
+        let before = store.remaining
         let outcome = store.interactWithPersonAhead(action)
         show(outcome)
 
@@ -540,25 +590,48 @@ struct QueueView: View {
         }
 
         if outcome.advance > 0 {
-            pulse(people: outcome.advance)
+            surgeForward(people: outcome.advance, from: before)
         }
 
         withAnimation(.easeOut(duration: 0.12)) { disturbance = 1 }
         withAnimation(.easeIn(duration: 0.45).delay(0.12)) { disturbance = 0 }
     }
 
-    /// 前に進んだ余韻。操作は止めないので、続けて押せる。
-    private func pulse(people: Int) {
-        advancePulse = AdvancePulse(startedAt: .now, people: people)
-        gainBanner = people
+    /// 前へ進んだことを見せる。すべての前進がここを通る。
+    ///
+    /// 数字は内部ではすでに減っているが、画面はこの演出に合わせて追いつく。
+    /// 終わったら必ず状態を戻すので、途中で何が起きても取り残されない。
+    private func surgeForward(people: Int, from before: Int, vehicle: GachaItem? = nil) {
+        guard people > 0 else { return }
+
+        let run = Surge(
+            fromRemaining: before,
+            peopleSkipped: people,
+            startedAt: .now,
+            vehicle: vehicle?.vehicle,
+            vehicleName: vehicle?.name
+        )
+        surge = run
+
+        switch run.tier {
+        case .slight:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .moderate:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case .strong:
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            sound.play(.overtake)
+        case .massive:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            sound.play(.overtake)
+        }
 
         Task {
-            try? await Task.sleep(for: .seconds(AdvancePulse.duration))
-            advancePulse = nil
-        }
-        Task {
-            try? await Task.sleep(for: .seconds(0.75))
-            gainBanner = nil
+            try? await Task.sleep(for: .seconds(run.duration + 0.25))
+            // 演出の残りをすべて片付けて、操作できる状態に戻す。
+            surge = nil
+            disturbance = 0
+            await rescheduleNotifications()
         }
     }
 
@@ -566,6 +639,7 @@ struct QueueView: View {
     private func breakThrough(_ phrase: VoicePhrase, _ volume: VoiceVolume) {
         guard !isBusy else { return }
 
+        let before = store.remaining
         let outcome = store.breakThrough(phrase: phrase, volume: volume)
         show(.init(
             grade: outcome.succeeded ? .great : (outcome.advance < 0 ? .backfire : .miss),
@@ -577,9 +651,8 @@ struct QueueView: View {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             sound.play(.fail)
         } else if outcome.succeeded {
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
             sound.play(.great)
-            pulse(people: outcome.advance)
+            surgeForward(people: outcome.advance, from: before)
         } else {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             sound.play(.fail)
@@ -596,7 +669,7 @@ struct QueueView: View {
         let skipped = store.useItem(item)
         guard skipped > 0 else { return }
 
-        runOvertake(item: item, from: before, skipped: skipped)
+        surgeForward(people: skipped, from: before, vehicle: item)
     }
 
     private func purchaseSkip() async {
@@ -607,27 +680,7 @@ struct QueueView: View {
         guard skipped > 0 else { return }
 
         store.skipAhead(by: skipped)
-        if let car = GachaCatalog.item(id: "car") {
-            runOvertake(item: car, from: before, skipped: skipped)
-        }
-    }
-
-    private func runOvertake(item: GachaItem, from before: Int, skipped: Int) {
-        let run = OvertakeRun(
-            item: item,
-            fromRemaining: before,
-            peopleSkipped: skipped,
-            startedAt: .now
-        )
-        overtake = run
-        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        sound.play(.overtake)
-
-        Task {
-            try? await Task.sleep(for: .seconds(run.duration + 0.6))
-            overtake = nil
-            await rescheduleNotifications()
-        }
+        surgeForward(people: skipped, from: before, vehicle: GachaCatalog.item(id: "car"))
     }
 
     private func clearStage() {

@@ -137,22 +137,25 @@ struct LoadoutView: View {
 
             if isOwned {
                 HStack(spacing: 8) {
-                    Button(isEquipped ? "外す" : "装備する") {
+                    Button {
                         if isEquipped {
                             store.unequip(slot)
                         } else {
                             store.equip(equipment)
                         }
+                    } label: {
+                        Text(isEquipped ? "外す" : "装備する")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(isEquipped ? AppTheme.ink : .white)
+                            .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
+                            .background(isEquipped ? Color.clear : AppTheme.stamp)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(AppTheme.ink.opacity(isEquipped ? 0.3 : 0), lineWidth: 1)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(isEquipped ? AppTheme.ink : .white)
-                    .frame(maxWidth: .infinity, minHeight: 34)
-                    .background(isEquipped ? Color.clear : AppTheme.stamp)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(AppTheme.ink.opacity(isEquipped ? 0.3 : 0), lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .buttonStyle(GameButtonStyle())
 
                     if isEquipped {
                         Text("装備中")

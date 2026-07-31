@@ -4,74 +4,14 @@ import SwiftUI
 ///
 /// 手前に後ろの人、中ほどに自分、その先に前の人が続き、
 /// 奥は地平線まで人で埋まっている。景色は進むにつれて移り変わる。
-/// ごぼう抜き中の状態。走っているあいだだけ存在する。
-struct OvertakeRun: Equatable {
-    let item: GachaItem
-    /// 走り出したときの残り人数。
-    let fromRemaining: Int
-    /// 実際に追い抜く人数。
-    let peopleSkipped: Int
-    let startedAt: Date
-
-    var duration: Double { item.overtakeDuration }
-
-    /// 0 から 1 まで。終わったら 1 のまま。
-    func progress(at date: Date) -> Double {
-        min(1, max(0, date.timeIntervalSince(startedAt) / duration))
-    }
-
-    /// 走っている途中の見かけの残り人数。
-    func displayedRemaining(at date: Date) -> Int {
-        let eased = easeInOut(progress(at: date))
-        return fromRemaining - Int((Double(peopleSkipped) * eased).rounded())
-    }
-
-    /// いま何人抜いたか。
-    func countedSoFar(at date: Date) -> Int {
-        Int((Double(peopleSkipped) * easeInOut(progress(at: date))).rounded())
-    }
-
-    /// 走り出しと止まりぎわをなめらかにする。
-    private func easeInOut(_ t: Double) -> Double {
-        t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
-    }
-}
-
-/// 前に進んだ直後の余韻。
-///
-/// 操作は止めずに、カメラだけが少し前へ寄って戻る。
-/// これがないと、人数だけ変わって前に進んだ実感が出ない。
-struct AdvancePulse: Equatable {
-    let startedAt: Date
-    /// 進んだ人数。多いほど寄りが強くなる。
-    let people: Int
-
-    static let duration: Double = 0.55
-
-    /// 0から1へ。終わったら1のまま。
-    func progress(at date: Date) -> Double {
-        min(1, max(0, date.timeIntervalSince(startedAt) / Self.duration))
-    }
-
-    /// 寄り具合。ぐっと寄ってから、ゆっくり戻る。
-    func strength(at date: Date) -> Double {
-        let t = progress(at: date)
-        guard t < 1 else { return 0 }
-        let weight = min(1, Double(people) / 3)
-        return sin(t * .pi) * weight
-    }
-}
-
 struct QueueWorldView: View {
     let stage: Stage
     let anchorProgress: Int
     let anchorDate: Date
     /// 前の人に絡んだ直後に一瞬だけ姿勢を崩す。
     let disturbance: Double
-    /// ごぼう抜き中だけ入る。
-    let overtake: OvertakeRun?
-    /// 直前に前進した時刻と人数。少しのあいだカメラが前に寄る。
-    let advancePulse: AdvancePulse?
+    /// 前へ進んでいる最中だけ入る。
+    let surge: Surge?
     /// 画面に別の吹き出しが出ているあいだは、前の人を黙らせる。
     let silencesRemark: Bool
     let onTapPersonAhead: () -> Void
@@ -95,15 +35,16 @@ struct QueueWorldView: View {
         let served = QueueEngine.servedCountExact(from: anchorDate, to: date)
         let progressExact = min(Double(stage.queueLength), Double(anchorProgress) + served)
         let time = date.timeIntervalSince1970
-        // 前に進んだ直後は、地平線が下がってカメラが前へ寄ったように見える。
-        let push = advancePulse?.strength(at: date) ?? 0
-        let horizonY = size.height * (0.30 + push * 0.035)
+        // 進んでいる最中は、地平線が下がってカメラが前へ寄ったように見える。
+        let push = surge?.cameraStrength(at: date) ?? 0
+        let horizonY = size.height * (0.30 + push * 0.05)
 
-        // 走っている最中は、追い抜き終わった位置ではなく途中の位置を描く。
+        // 走っている最中は、進み終わった位置ではなく途中の位置を描く。
+        // こうすると周りの人が後ろへ流れて、追い抜いたように見える。
         let remaining: Int
         let scroll: Double
-        if let overtake {
-            remaining = overtake.displayedRemaining(at: date)
+        if let surge, !surge.isFinished(at: date) {
+            remaining = surge.displayedRemaining(at: date)
             scroll = Double(stage.queueLength - remaining)
         } else {
             remaining = stage.queueLength - Int(progressExact)
@@ -131,8 +72,8 @@ struct QueueWorldView: View {
             push: push
         )
 
-        if let overtake {
-            drawOvertakeCounter(overtake, in: context, size: size, date: date)
+        if let surge, !surge.isFinished(at: date) {
+            drawSurgeEffects(surge, in: context, size: size, date: date)
         }
     }
 
@@ -202,13 +143,14 @@ struct QueueWorldView: View {
         let centerX = size.width / 2
         let slotCount = Double(Self.behindCount + Self.aheadCount)
 
-        // 走っているあいだは列から横に出る。
-        let sidestep = overtake.map { run -> Double in
+        // 進んでいるあいだは列から横に出る。抜いた人数が多いほど大きく回り込む。
+        let sidestep = surge.map { run -> Double in
             let t = run.progress(at: date)
-            // 出るのも戻るのも一瞬で、大半は横を走っている。
-            let out = min(1, t / 0.14)
-            let back = min(1, max(0, (1 - t) / 0.14))
-            return min(out, back) * size.width * 0.30
+            guard t < 1 else { return 0 }
+            // 出るのも戻るのも一瞬で、大半は横を進んでいる。
+            let out = min(1, t / 0.16)
+            let back = min(1, max(0, (1 - t) / 0.16))
+            return min(out, back) * size.width * 0.30 * run.tier.cameraPush
         } ?? 0
 
         // 奥の人から描いて、手前の人が重なるようにする。
@@ -240,7 +182,9 @@ struct QueueWorldView: View {
             )
             let personHeight = height * person.heightScale
 
-            if isPlayer, overtake == nil {
+            let isSurging = surge.map { !$0.isFinished(at: date) } ?? false
+
+            if isPlayer, !isSurging {
                 drawPlayerRing(in: context, feet: feet, height: personHeight, time: time)
             }
 
@@ -256,9 +200,9 @@ struct QueueWorldView: View {
                 fade: fade(atDepth: depth)
             )
 
-            if isPlayer, let overtake {
+            if isPlayer, isSurging, let vehicle = surge?.vehicle {
                 VehicleRenderer.draw(
-                    overtake.item.vehicle,
+                    vehicle,
                     in: context,
                     feet: feet,
                     height: personHeight,
@@ -268,51 +212,63 @@ struct QueueWorldView: View {
 
             if isPlayer {
                 drawPlayerLabel(in: context, feet: feet, height: personHeight, time: time)
-            } else if slot == 1, overtake == nil, !silencesRemark, !person.remark.isEmpty {
+            } else if slot == 1, !isSurging, !silencesRemark, !person.remark.isEmpty {
                 drawRemark(person.remark, in: context, feet: feet, height: personHeight, size: size)
             }
         }
     }
 
-    // MARK: - ごぼう抜きのカウンター
+    // MARK: - 前進の演出
 
-    /// 走っているあいだ、抜いた人数が増えていくのを見せる。
-    private func drawOvertakeCounter(
-        _ run: OvertakeRun,
+    /// 抜いている最中の速度線と光。人数が多いほど激しくする。
+    private func drawSurgeEffects(
+        _ surge: Surge,
         in context: GraphicsContext,
         size: CGSize,
         date: Date
     ) {
-        let counted = run.countedSoFar(at: date)
-        let isDone = run.progress(at: date) >= 1
-        let color = run.item.rarity.color
+        let t = surge.progress(at: date)
+        // 走っている最中がいちばん強く、前後は控えめ。
+        let intensity = sin(t * .pi)
 
-        let title = context.resolve(
-            Text("\(counted)人抜き\(isDone ? "！" : "")")
-                .font(.system(size: isDone ? 46 : 38, weight: .black, design: .rounded))
-                .foregroundColor(.white)
-        )
-        let center = CGPoint(x: size.width / 2, y: size.height * 0.2)
+        if surge.tier.showsSpeedLines {
+            drawSpeedLines(in: context, size: size, date: date, intensity: intensity)
+        }
 
-        // 読めるように後ろに影を敷く。
-        let measured = title.measure(in: size)
-        context.fill(
-            Path(roundedRect: CGRect(
-                x: center.x - measured.width / 2 - 20,
-                y: center.y - measured.height / 2 - 10,
-                width: measured.width + 40,
-                height: measured.height + 20
-            ), cornerRadius: 12),
-            with: .color(color.opacity(0.85))
-        )
-        context.draw(title, at: center)
+        if surge.tier.flashes {
+            // 走り出しの一瞬だけ、画面が白く飛ぶ。
+            let flash = max(0, 1 - t / 0.18)
+            if flash > 0 {
+                context.fill(
+                    Path(CGRect(origin: .zero, size: size)),
+                    with: .color(.white.opacity(flash * 0.65))
+                )
+            }
+        }
+    }
 
-        context.draw(
-            Text(run.item.name)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.white),
-            at: CGPoint(x: center.x, y: center.y + measured.height / 2 + 22)
-        )
+    /// 横に流れる線。速さを目で分からせる。
+    private func drawSpeedLines(
+        in context: GraphicsContext,
+        size: CGSize,
+        date: Date,
+        intensity: Double
+    ) {
+        guard intensity > 0.05 else { return }
+        let time = date.timeIntervalSince1970
+
+        for index in 0..<16 {
+            let y = QueueEngine.unitRandom(index, salt: 0xB77E) * size.height
+            let length = size.width * (0.16 + QueueEngine.unitRandom(index, salt: 0xC88F) * 0.4)
+            let offset = (time * 2_600 + Double(index) * 190)
+                .truncatingRemainder(dividingBy: size.width + length)
+            let x = size.width - offset
+
+            context.fill(
+                Path(CGRect(x: x, y: y, width: length, height: max(1.5, 3 * intensity))),
+                with: .color(.white.opacity(0.5 * intensity))
+            )
+        }
     }
 
     /// 奥ほど景色に溶けていく。

@@ -57,23 +57,25 @@ struct VoiceControl: View {
                 Label("押し通す", systemImage: "figure.walk.motion")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 42)
+                    .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
                     .background(AppTheme.stamp)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+            .buttonStyle(GameButtonStyle())
 
             // 声は実機で安定を確かめてから出す。既定では表示しない。
             if isVoiceEnabled {
                 Button {
                     beginVoice()
                 } label: {
-                    Label("声", systemImage: "mic.fill")
+                    Label(voice.isStarting ? "準備中" : "声", systemImage: "mic.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                        .frame(minWidth: 76, maxWidth: 76, minHeight: 42)
+                        .frame(minWidth: 84, maxWidth: 84, minHeight: AppTheme.minimumTapHeight)
                         .background(AppTheme.paper.opacity(0.94))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
+                .buttonStyle(GameButtonStyle())
                 .disabled(voice.isStarting)
             }
         }
@@ -109,10 +111,11 @@ struct VoiceControl: View {
                 Text("離す")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
                     .background(AppTheme.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+            .buttonStyle(GameButtonStyle())
         }
         .padding(10)
         .background(AppTheme.paper.opacity(0.96))
@@ -141,13 +144,14 @@ struct VoiceControl: View {
                             silentPhrase = phrase
                         } label: {
                             Text(phrase.label)
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 5)
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
                                 .background(silentPhrase == phrase ? AppTheme.stamp : AppTheme.ink.opacity(0.08))
                                 .foregroundStyle(silentPhrase == phrase ? .white : AppTheme.ink)
                                 .clipShape(Capsule())
                         }
+                        .buttonStyle(GameButtonStyle())
                     }
                 }
             }
@@ -174,10 +178,11 @@ struct VoiceControl: View {
                     Text("この強さで言う")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 38)
+                        .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
                         .background(AppTheme.stamp)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
+                .buttonStyle(GameButtonStyle())
             }
         }
         .padding(10)

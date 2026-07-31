@@ -82,18 +82,21 @@ struct ItemSheet: View {
                 onPurchase()
                 dismiss()
             } label: {
-                if purchases.isPurchasing {
-                    ProgressView()
-                } else {
-                    Text(purchases.priceLabel)
+                Group {
+                    if purchases.isPurchasing {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text(purchases.priceLabel)
+                            .font(.subheadline.weight(.bold))
+                    }
                 }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .frame(minHeight: AppTheme.minimumTapHeight)
+                .background(AppTheme.ink)
+                .clipShape(Capsule())
             }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .background(AppTheme.ink)
-            .clipShape(Capsule())
+            .buttonStyle(GameButtonStyle())
             .disabled(purchases.isPurchasing)
         }
         .padding(12)
@@ -134,16 +137,19 @@ struct ItemSheet: View {
 
             Spacer()
 
-            Button("使う") {
+            Button {
                 onUse(item)
                 dismiss()
+            } label: {
+                Text("使う")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .frame(minHeight: AppTheme.minimumTapHeight)
+                    .background(count > 0 ? AppTheme.stamp : Color.secondary)
+                    .clipShape(Capsule())
             }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .background(count > 0 ? AppTheme.stamp : Color.secondary)
-            .clipShape(Capsule())
+            .buttonStyle(GameButtonStyle())
             .disabled(count <= 0)
         }
         .padding(12)

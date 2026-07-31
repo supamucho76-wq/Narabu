@@ -531,15 +531,6 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(ToneSynth.pitch(semitonesFromA4: 12), 880, accuracy: 0.01)
     }
 
-    // MARK: - 前進の余韻
-
-    func testAdvancePulseRisesAndSettles() {
-        let pulse = AdvancePulse(startedAt: noon, people: 3)
-        XCTAssertEqual(pulse.strength(at: noon), 0, accuracy: 0.01)
-        XCTAssertGreaterThan(pulse.strength(at: noon.addingTimeInterval(AdvancePulse.duration / 2)), 0.5)
-        XCTAssertEqual(pulse.strength(at: noon.addingTimeInterval(AdvancePulse.duration)), 0, accuracy: 0.01)
-    }
-
     // MARK: - ガチャ
 
     func testDropRatesAddUpToOneHundredPercent() {
@@ -615,23 +606,96 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(GachaMachine.countdownLabel(59), "00:59")
     }
 
-    // MARK: - ごぼう抜き
+    // MARK: - 前進の演出
 
-    func testOvertakeCounterRisesFromZeroToTheSkippedCount() {
-        let run = OvertakeRun(
-            item: GachaCatalog.item(id: "car")!,
-            fromRemaining: 400,
-            peopleSkipped: 100,
-            startedAt: noon
+    /// 抜いた人数によって、演出の強さが段階的に変わること。
+    func testSurgeIntensityScalesWithPeople() {
+        XCTAssertEqual(Surge.Tier.of(1), .slight)
+        XCTAssertEqual(Surge.Tier.of(4), .slight)
+        XCTAssertEqual(Surge.Tier.of(5), .moderate)
+        XCTAssertEqual(Surge.Tier.of(14), .moderate)
+        XCTAssertEqual(Surge.Tier.of(15), .strong)
+        XCTAssertEqual(Surge.Tier.of(29), .strong)
+        XCTAssertEqual(Surge.Tier.of(30), .massive)
+        XCTAssertEqual(Surge.Tier.of(300), .massive)
+    }
+
+    /// 段階が上がるほど、演出が長く強くなること。
+    func testStrongerSurgesLastLongerAndPushHarder() {
+        let tiers: [Surge.Tier] = [.slight, .moderate, .strong, .massive]
+
+        for (weaker, stronger) in zip(tiers, tiers.dropFirst()) {
+            XCTAssertGreaterThan(stronger.duration, weaker.duration)
+            XCTAssertGreaterThanOrEqual(stronger.cameraPush, weaker.cameraPush)
+            XCTAssertGreaterThan(stronger.bannerSize, weaker.bannerSize)
+        }
+
+        XCTAssertTrue(Surge.Tier.massive.flashes)
+        XCTAssertFalse(Surge.Tier.slight.flashes)
+        XCTAssertTrue(Surge.Tier.strong.showsSpeedLines)
+        XCTAssertFalse(Surge.Tier.moderate.showsSpeedLines)
+    }
+
+    /// テンポを殺さないよう、演出は2秒以内で終わること。
+    func testSurgesNeverBlockPlayForTooLong() {
+        for people in [1, 5, 20, 100, 300] {
+            let surge = Surge(
+                fromRemaining: 500, peopleSkipped: people, startedAt: noon,
+                vehicle: nil, vehicleName: nil
+            )
+            XCTAssertLessThanOrEqual(surge.duration, 2.0, "\(people)人の演出が長すぎる")
+        }
+    }
+
+    /// 数字は演出に合わせて減り、途中で戻らないこと。
+    func testSurgeCountsDownSmoothlyWithoutGoingBackwards() {
+        let surge = Surge(
+            fromRemaining: 617, peopleSkipped: 19, startedAt: noon,
+            vehicle: nil, vehicleName: nil
         )
 
-        XCTAssertEqual(run.countedSoFar(at: noon), 0)
-        XCTAssertEqual(run.countedSoFar(at: noon.addingTimeInterval(run.duration)), 100)
-        XCTAssertEqual(run.displayedRemaining(at: noon.addingTimeInterval(run.duration)), 300)
+        XCTAssertEqual(surge.displayedRemaining(at: noon), 617)
+        XCTAssertEqual(surge.displayedRemaining(at: noon.addingTimeInterval(surge.duration)), 598)
+
+        var previous = 618
+        for step in stride(from: 0.0, through: surge.duration, by: 0.05) {
+            let shown = surge.displayedRemaining(at: noon.addingTimeInterval(step))
+            XCTAssertLessThanOrEqual(shown, previous, "数字が増えている")
+            previous = shown
+        }
+    }
+
+    /// 演出が終われば、カメラの寄りも必ず戻ること。
+    func testCameraReturnsAfterTheSurge() {
+        let surge = Surge(
+            fromRemaining: 200, peopleSkipped: 40, startedAt: noon,
+            vehicle: nil, vehicleName: nil
+        )
+
+        XCTAssertEqual(surge.cameraStrength(at: noon), 0, accuracy: 0.01)
+        XCTAssertGreaterThan(surge.cameraStrength(at: noon.addingTimeInterval(surge.duration / 2)), 0.5)
+        XCTAssertEqual(surge.cameraStrength(at: noon.addingTimeInterval(surge.duration)), 0, accuracy: 0.01)
+        XCTAssertTrue(surge.isFinished(at: noon.addingTimeInterval(surge.duration)))
+    }
+
+    /// 乗り物を使ったときは、演出を長めに取ること。
+    func testItemSurgesRunLongEnoughToSeeTheVehicle() {
+        let onFoot = Surge(
+            fromRemaining: 400, peopleSkipped: 100, startedAt: noon,
+            vehicle: nil, vehicleName: nil
+        )
+        let byCar = Surge(
+            fromRemaining: 400, peopleSkipped: 100, startedAt: noon,
+            vehicle: .car, vehicleName: "車"
+        )
+
+        XCTAssertGreaterThan(byCar.duration, onFoot.duration)
+        XCTAssertEqual(byCar.countedSoFar(at: noon), 0)
+        XCTAssertEqual(byCar.countedSoFar(at: noon.addingTimeInterval(byCar.duration)), 100)
 
         var previous = 0
-        for step in stride(from: 0.0, through: run.duration, by: 0.1) {
-            let counted = run.countedSoFar(at: noon.addingTimeInterval(step))
+        for step in stride(from: 0.0, through: byCar.duration, by: 0.1) {
+            let counted = byCar.countedSoFar(at: noon.addingTimeInterval(step))
             XCTAssertGreaterThanOrEqual(counted, previous, "カウンターが戻っている")
             previous = counted
         }
