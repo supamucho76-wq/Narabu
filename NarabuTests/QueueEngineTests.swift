@@ -659,13 +659,42 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertGreaterThan(rareShare(luck: 0.5), rareShare(luck: 0))
     }
 
-    func testCatalogHasTheFiveExpectedItems() {
-        XCTAssertEqual(GachaCatalog.items.count, 5)
+    func testCatalogHasTwentyItemsWithUniqueIDs() {
+        XCTAssertEqual(GachaCatalog.items.count, 20)
+        XCTAssertEqual(Set(GachaCatalog.items.map(\.id)).count, 20, "IDが重複している")
         XCTAssertEqual(GachaCatalog.item(id: "dash")?.people, 5)
         XCTAssertEqual(GachaCatalog.item(id: "bicycle")?.people, 20)
         XCTAssertEqual(GachaCatalog.item(id: "motorbike")?.people, 50)
         XCTAssertEqual(GachaCatalog.item(id: "car")?.people, 100)
         XCTAssertEqual(GachaCatalog.item(id: "train")?.people, 300)
+        XCTAssertEqual(GachaCatalog.item(id: "divineHand")?.people, 999)
+    }
+
+    /// どの等級を引いても4通りの当たり外れが出るか。
+    func testEachRarityHasFourItems() {
+        for rarity in GachaRarity.allCases {
+            let items = GachaCatalog.items.filter { $0.rarity == rarity }
+            XCTAssertEqual(items.count, 4, "\(rarity.label)の種類数が4つではない")
+        }
+    }
+
+    /// 等級が上がるほど確実に抜ける人数が増えるか。
+    func testHigherRarityAlwaysSkipsMorePeople() {
+        let ordered = GachaRarity.allCases
+        for (lower, higher) in zip(ordered, ordered.dropFirst()) {
+            let lowerMax = GachaCatalog.items.filter { $0.rarity == lower }.map(\.people).max() ?? 0
+            let higherMin = GachaCatalog.items.filter { $0.rarity == higher }.map(\.people).min() ?? 0
+            XCTAssertLessThan(lowerMax, higherMin,
+                              "\(lower.label)の最大が\(higher.label)の最小を超えている")
+        }
+    }
+
+    /// 描き分けを用意した乗り物が、どれも引けずに死蔵されていないか。
+    func testEveryVehicleKindIsObtainable() {
+        let used = Set(GachaCatalog.items.map(\.vehicle))
+        for kind in VehicleKind.allCases {
+            XCTAssertTrue(used.contains(kind), "\(kind.rawValue)がどのアイテムにも割り当てられていない")
+        }
     }
 
     /// 画面の中で数えるのではなく、保存した時刻から求めているかどうか。

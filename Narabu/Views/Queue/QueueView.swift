@@ -39,7 +39,6 @@ struct QueueView: View {
                 topBar
                 Spacer(minLength: 0)
                 reactionToast
-                personCard
                 missionCard
                 voiceControl
                 actionRow
@@ -386,50 +385,6 @@ struct QueueView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: reaction)
         .padding(.bottom, 8)
-    }
-
-    // MARK: - 4. 人物
-
-    /// 前の人の様子。ここを読めば、どのアクションが効くか分かる。
-    private var personCard: some View {
-        let person = store.personAhead
-
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text("前の人")
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(AppTheme.inkSecondary)
-                Text(person.descriptor)
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text(person.personality.label)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(AppTheme.stamp)
-            }
-            Text(person.personality.hint)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // 説明で終わらせず、どう攻めるかの材料にする。
-            HStack(alignment: .top, spacing: 5) {
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(Color(red: 0.82, green: 0.62, blue: 0.16))
-                    .padding(.top, 2)
-                Text(person.personality.tactic)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(AppTheme.ink.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(AppTheme.paper.opacity(0.94))
-        .foregroundStyle(AppTheme.ink)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .padding(.bottom, 6)
     }
 
     // MARK: - 2. ミッション

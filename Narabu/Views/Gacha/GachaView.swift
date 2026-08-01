@@ -105,24 +105,29 @@ struct GachaView: View {
     // MARK: - 引く前
 
     private var readyPanel: some View {
-        VStack(spacing: 26) {
-            Spacer()
+        // 20種類ぶんの確率表があるので、小さい端末では上側を送れるようにしておく。
+        // 引くボタンだけは常に見えている位置に固定する。
+        VStack(spacing: 20) {
+            ScrollView {
+                VStack(spacing: 22) {
+                    VStack(spacing: 8) {
+                        Text(mode.title)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        Text("乗り物が出ます。列をごぼう抜きできます。")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
 
-            VStack(spacing: 8) {
-                Text(mode.title)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("乗り物が出ます。列をごぼう抜きできます。")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
+                    capsule(tint: Color(red: 0.94, green: 0.86, blue: 0.62))
+                        .frame(width: 150, height: 150)
+
+                    rateTable
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
             }
-
-            capsule(tint: Color(red: 0.94, green: 0.86, blue: 0.62))
-                .frame(width: 150, height: 150)
-
-            rateTable
-
-            Spacer()
+            .scrollBounceBehavior(.basedOnSize)
 
             VStack(spacing: 8) {
                 Text(mode.costLabel)
@@ -148,26 +153,33 @@ struct GachaView: View {
     }
 
     /// 何が出るのかが分かるように、確率も見せておく。
+    ///
+    /// 20種類を1行ずつ並べると縦に長くなりすぎるので、等級ごとにまとめる。
+    /// 1つあたりの確率は端数が出るが、等級の合計はきりのいい数字になる。
     private var rateTable: some View {
-        VStack(spacing: 5) {
-            ForEach(GachaCatalog.items) { item in
-                HStack(spacing: 8) {
-                    Text(item.rarity.label)
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(item.rarity.color)
-                        .frame(width: 30, alignment: .leading)
-                    Image(systemName: item.symbolName)
-                        .font(.system(size: 11))
-                        .frame(width: 18)
-                    Text(item.name)
-                        .font(.caption2)
-                    Spacer()
-                    Text(item.summary)
-                        .font(.caption2.weight(.medium))
-                    Text(item.dropRate.formatted(.percent.precision(.fractionLength(0))))
-                        .font(.caption2.monospacedDigit())
+        VStack(spacing: 7) {
+            ForEach(GachaRarity.allCases, id: \.self) { rarity in
+                let items = GachaCatalog.items.filter { $0.rarity == rarity }
+                let total = items.reduce(0) { $0 + $1.dropRate }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(rarity.label)
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(rarity.color)
+                            .frame(width: 30, alignment: .leading)
+                        Text(peopleRange(of: items))
+                            .font(.caption2.weight(.medium))
+                        Spacer()
+                        Text(total.formatted(.percent.precision(.fractionLength(0))))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.5))
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                    Text(items.map(\.name).joined(separator: "・"))
+                        .font(.system(size: 9))
                         .foregroundStyle(.white.opacity(0.5))
-                        .frame(width: 38, alignment: .trailing)
+                        .padding(.leading, 38)
                 }
                 .foregroundStyle(.white.opacity(0.85))
             }
@@ -175,6 +187,13 @@ struct GachaView: View {
         .padding(14)
         .background(.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func peopleRange(of items: [GachaItem]) -> String {
+        guard let low = items.map(\.people).min(), let high = items.map(\.people).max() else {
+            return ""
+        }
+        return low == high ? "\(low)人抜き" : "\(low)〜\(high)人抜き"
     }
 
     // MARK: - 排出中

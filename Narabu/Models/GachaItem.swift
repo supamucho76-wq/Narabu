@@ -76,41 +76,140 @@ struct GachaItem: Identifiable, Equatable, Sendable {
 }
 
 /// 乗り物の見た目。
-enum VehicleKind: String, Codable, Sendable {
+enum VehicleKind: String, Codable, CaseIterable, Sendable {
     case running
+    case hopping
     case bicycle
+    case scooter
+    case cart
     case motorbike
+    case gang
+    case palanquin
+    case animal
+    case dinosaur
     case car
+    case fireTruck
+    case helicopter
     case train
+    case ufo
+    case rocket
+    case divineHand
 }
 
 enum GachaCatalog {
     /// 排出されるアイテムの全種類。ここの数値を変えれば全体に反映される。
+    ///
+    /// 等級ごとに4つずつ。同じ等級の中でも抜ける人数に差をつけて、
+    /// 引くたびに当たり外れが出るようにしている。
     static let items: [GachaItem] = [
+        // N（合計35%）
+        GachaItem(
+            id: "hop", name: "ケンケン", rarity: .n,
+            people: 3, dropRate: 0.0875, overtakeDuration: 1.0,
+            symbolName: "figure.stand", vehicle: .hopping
+        ),
         GachaItem(
             id: "dash", name: "ダッシュ", rarity: .n,
-            people: 5, dropRate: 0.35, overtakeDuration: 1.0,
+            people: 5, dropRate: 0.0875, overtakeDuration: 1.0,
             symbolName: "figure.run", vehicle: .running
         ),
         GachaItem(
-            id: "bicycle", name: "自転車", rarity: .r,
-            people: 20, dropRate: 0.30, overtakeDuration: 1.5,
+            id: "tricycle", name: "三輪車", rarity: .n,
+            people: 7, dropRate: 0.0875, overtakeDuration: 1.2,
             symbolName: "bicycle", vehicle: .bicycle
         ),
         GachaItem(
+            id: "sprint", name: "全力疾走", rarity: .n,
+            people: 9, dropRate: 0.0875, overtakeDuration: 1.2,
+            symbolName: "figure.run.circle", vehicle: .running
+        ),
+
+        // R（合計30%）
+        GachaItem(
+            id: "cart", name: "台車", rarity: .r,
+            people: 13, dropRate: 0.075, overtakeDuration: 1.4,
+            symbolName: "cart.fill", vehicle: .cart
+        ),
+        GachaItem(
+            id: "kickboard", name: "キックボード", rarity: .r,
+            people: 17, dropRate: 0.075, overtakeDuration: 1.5,
+            symbolName: "scooter", vehicle: .scooter
+        ),
+        GachaItem(
+            id: "bicycle", name: "自転車", rarity: .r,
+            people: 20, dropRate: 0.075, overtakeDuration: 1.5,
+            symbolName: "bicycle", vehicle: .bicycle
+        ),
+        GachaItem(
+            id: "deliveryBike", name: "出前の原付", rarity: .r,
+            people: 26, dropRate: 0.075, overtakeDuration: 1.7,
+            symbolName: "takeoutbag.and.cup.and.straw.fill", vehicle: .motorbike
+        ),
+
+        // SR（合計20%）
+        GachaItem(
+            id: "palanquin", name: "神輿", rarity: .sr,
+            people: 38, dropRate: 0.05, overtakeDuration: 2.0,
+            symbolName: "figure.socialdance", vehicle: .palanquin
+        ),
+        GachaItem(
             id: "motorbike", name: "バイク", rarity: .sr,
-            people: 50, dropRate: 0.20, overtakeDuration: 2.0,
+            people: 50, dropRate: 0.05, overtakeDuration: 2.0,
             symbolName: "figure.outdoor.cycle", vehicle: .motorbike
         ),
         GachaItem(
+            id: "ostrich", name: "ダチョウ", rarity: .sr,
+            people: 62, dropRate: 0.05, overtakeDuration: 2.1,
+            symbolName: "bird.fill", vehicle: .animal
+        ),
+        GachaItem(
+            id: "gang", name: "暴走族の集団", rarity: .sr,
+            people: 75, dropRate: 0.05, overtakeDuration: 2.3,
+            symbolName: "flame.fill", vehicle: .gang
+        ),
+
+        // SSR（合計12%）
+        GachaItem(
             id: "car", name: "車", rarity: .ssr,
-            people: 100, dropRate: 0.12, overtakeDuration: 2.5,
+            people: 100, dropRate: 0.03, overtakeDuration: 2.4,
             symbolName: "car.fill", vehicle: .car
         ),
         GachaItem(
+            id: "fireTruck", name: "消防車", rarity: .ssr,
+            people: 125, dropRate: 0.03, overtakeDuration: 2.5,
+            symbolName: "car.rear.waves.up.fill", vehicle: .fireTruck
+        ),
+        GachaItem(
+            id: "trex", name: "ティラノサウルス", rarity: .ssr,
+            people: 160, dropRate: 0.03, overtakeDuration: 2.7,
+            symbolName: "lizard.fill", vehicle: .dinosaur
+        ),
+        GachaItem(
+            id: "helicopter", name: "ヘリコプター", rarity: .ssr,
+            people: 200, dropRate: 0.03, overtakeDuration: 2.8,
+            symbolName: "helicopter", vehicle: .helicopter
+        ),
+
+        // UR（合計3%）
+        GachaItem(
             id: "train", name: "電車", rarity: .ur,
-            people: 300, dropRate: 0.03, overtakeDuration: 3.0,
+            people: 300, dropRate: 0.0075, overtakeDuration: 3.0,
             symbolName: "tram.fill", vehicle: .train
+        ),
+        GachaItem(
+            id: "rocket", name: "ロケット", rarity: .ur,
+            people: 450, dropRate: 0.0075, overtakeDuration: 3.2,
+            symbolName: "airplane.departure", vehicle: .rocket
+        ),
+        GachaItem(
+            id: "ufo", name: "UFO", rarity: .ur,
+            people: 600, dropRate: 0.0075, overtakeDuration: 3.4,
+            symbolName: "circle.dotted", vehicle: .ufo
+        ),
+        GachaItem(
+            id: "divineHand", name: "神様の手", rarity: .ur,
+            people: 999, dropRate: 0.0075, overtakeDuration: 3.6,
+            symbolName: "hand.raised.fill", vehicle: .divineHand
         )
     ]
 
