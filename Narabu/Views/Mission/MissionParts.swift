@@ -23,16 +23,7 @@ enum MissionParts {
         until deadline: Date,
         onExpire: @escaping () -> Void
     ) -> some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
-            let remaining = max(0, deadline.timeIntervalSince(timeline.date))
-
-            Text(String(format: "残り %.1f秒", remaining))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(AppTheme.inkSecondary)
-                .task(id: remaining <= 0) {
-                    if remaining <= 0 { onExpire() }
-                }
-        }
+        Countdown(deadline: deadline, onExpire: onExpire)
     }
 
     /// 大きな数字。いま何回ぶんかを見せる。
@@ -54,6 +45,34 @@ enum MissionParts {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(GameButtonStyle())
+    }
+
+    /// 残り時間の表示。
+    ///
+    /// `enum` の中の関数から `.task` を使うと、閉じ込めた `onExpire` が
+    /// どのアクターのものか決まらず Swift 6 に弾かれる。
+    /// View にしておけば本体が `@MainActor` になるので、その心配がなくなる。
+    struct Countdown: View {
+        let deadline: Date
+        let onExpire: () -> Void
+
+        /// 0秒になっても知らせるのは一度だけ。
+        @State private var hasExpired = false
+
+        var body: some View {
+            TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                let remaining = max(0, deadline.timeIntervalSince(timeline.date))
+
+                Text(String(format: "残り %.1f秒", remaining))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(AppTheme.inkSecondary)
+                    .onChange(of: remaining <= 0, initial: true) { _, expired in
+                        guard expired, !hasExpired else { return }
+                        hasExpired = true
+                        onExpire()
+                    }
+            }
+        }
     }
 
     /// 遊ぶ場所の枠。どのゲームも同じ大きさの舞台で遊ぶ。
