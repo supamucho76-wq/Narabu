@@ -4,6 +4,10 @@ import SwiftUI
 ///
 /// どのゲームも「残り時間が減る」「進み具合が伸びる」の2つで出来ているので、
 /// そこだけ共通にして、遊びかたの違いに集中できるようにする。
+/// 中身はすべて画面を組み立てる関数で、呼ぶのはミニゲームの `body` の中だけ。
+/// SwiftUI の View と同じ場所にいると宣言しておかないと、
+/// ここで作った部品にクロージャを渡すたびに Swift 6 が競合を疑う。
+@MainActor
 enum MissionParts {
     /// 進み具合の帯。
     static func track(ratio: Double, tint: Color = AppTheme.stamp, height: Double = 8) -> some View {
