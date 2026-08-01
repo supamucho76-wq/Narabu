@@ -74,7 +74,7 @@ struct HideGame: View {
                         .onEnded { _ in isMoving = false }
                 )
 
-            MissionParts.countdown(until: startedAt.addingTimeInterval(seconds)) { finish(false) }
+            MissionParts.countdown(seconds: seconds) { finish(false) }
         }
         .onAppear {
             startedAt = Date()

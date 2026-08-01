@@ -10,14 +10,13 @@ struct MashGame: View {
     let onFinish: (Bool) -> Void
 
     @State private var taps = 0
-    @State private var deadline = Date()
     @State private var isDone = false
 
     var body: some View {
         VStack(spacing: 14) {
             MissionParts.counter(taps, of: target)
             MissionParts.track(ratio: Double(taps) / Double(target))
-            MissionParts.countdown(until: deadline) { finish(taps >= target) }
+            MissionParts.countdown(seconds: seconds) { finish(taps >= target) }
 
             MissionParts.bigButton("タップ") {
                 guard !isDone else { return }
@@ -26,7 +25,6 @@ struct MashGame: View {
                 if taps >= target { finish(true) }
             }
         }
-        .onAppear { deadline = Date().addingTimeInterval(seconds) }
     }
 
     private func finish(_ success: Bool) {

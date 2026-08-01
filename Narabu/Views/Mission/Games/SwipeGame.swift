@@ -10,7 +10,6 @@ struct SwipeGame: View {
     let onFinish: (Bool) -> Void
 
     @State private var cleared = 0
-    @State private var deadline = Date()
     @State private var wrongFlash = false
     @State private var isDone = false
 
@@ -43,9 +42,8 @@ struct SwipeGame: View {
                     .onEnded { value in handle(SwipeDirection.of(value.translation)) }
             )
 
-            MissionParts.countdown(until: deadline) { finish(false) }
+            MissionParts.countdown(seconds: seconds) { finish(false) }
         }
-        .onAppear { deadline = Date().addingTimeInterval(seconds) }
     }
 
     private func handle(_ direction: SwipeDirection?) {

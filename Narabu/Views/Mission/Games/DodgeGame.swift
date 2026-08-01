@@ -66,7 +66,7 @@ struct DodgeGame: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkSecondary)
 
-            MissionParts.countdown(until: startedAt.addingTimeInterval(seconds)) { finish(true) }
+            MissionParts.countdown(seconds: seconds) { finish(true) }
         }
         .onAppear { startedAt = Date() }
     }

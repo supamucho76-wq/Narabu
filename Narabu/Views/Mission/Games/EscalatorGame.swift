@@ -60,7 +60,7 @@ struct EscalatorGame: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkSecondary)
 
-            MissionParts.countdown(until: startedAt.addingTimeInterval(seconds)) { finish(false) }
+            MissionParts.countdown(seconds: seconds) { finish(false) }
         }
         .onAppear {
             startedAt = Date()

@@ -23,11 +23,14 @@ enum MissionParts {
     }
 
     /// 残り時間。0になった瞬間に一度だけ知らせる。
+    ///
+    /// 締め切りの時刻ではなく秒数を渡す。時刻を外から渡す作りだと、
+    /// 呼ぶ側が入れ忘れた一瞬に「もう時間切れ」と判定されてしまうため。
     static func countdown(
-        until deadline: Date,
+        seconds: Double,
         onExpire: @escaping () -> Void
     ) -> some View {
-        Countdown(deadline: deadline, onExpire: onExpire)
+        Countdown(seconds: seconds, onExpire: onExpire)
     }
 
     /// 大きな数字。いま何回ぶんかを見せる。
@@ -56,26 +59,33 @@ enum MissionParts {
     /// `enum` の中の関数から `.task` を使うと、閉じ込めた `onExpire` が
     /// どのアクターのものか決まらず Swift 6 に弾かれる。
     /// View にしておけば本体が `@MainActor` になるので、その心配がなくなる。
+    ///
+    /// **時計はこの View が自分で持つ。** 外から締め切りの時刻を受け取る作りだと、
+    /// 呼ぶ側が入れるまでの一瞬が時間切れ扱いになり、開いた瞬間に失敗する。
     struct Countdown: View {
-        let deadline: Date
+        let seconds: Double
         let onExpire: () -> Void
 
+        /// 数え始めた時刻。画面に出た瞬間に入れ直す。
+        @State private var startedAt = Date()
         /// 0秒になっても知らせるのは一度だけ。
         @State private var hasExpired = false
 
         var body: some View {
             TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
-                let remaining = max(0, deadline.timeIntervalSince(timeline.date))
+                let elapsed = timeline.date.timeIntervalSince(startedAt)
+                let remaining = max(0, max(0.5, seconds) - elapsed)
 
                 Text(String(format: "残り %.1f秒", remaining))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(AppTheme.inkSecondary)
-                    .onChange(of: remaining <= 0, initial: true) { _, expired in
+                    .onChange(of: remaining <= 0) { _, expired in
                         guard expired, !hasExpired else { return }
                         hasExpired = true
                         onExpire()
                     }
             }
+            .onAppear { startedAt = Date() }
         }
     }
 
