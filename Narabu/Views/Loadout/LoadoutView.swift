@@ -13,12 +13,14 @@ struct LoadoutView: View {
     private enum Tab: String, CaseIterable, Identifiable {
         case equipment
         case skill
+        case records
 
         var id: String { rawValue }
         var label: String {
             switch self {
             case .equipment: "装備"
             case .skill: "スキル"
+            case .records: "記録"
             }
         }
     }
@@ -37,6 +39,7 @@ struct LoadoutView: View {
                     switch tab {
                     case .equipment: equipmentSection
                     case .skill: skillSection
+                    case .records: recordsSection
                     }
                 }
             }
@@ -289,6 +292,89 @@ struct LoadoutView: View {
         if isMax { return "最大まで育てました" }
         if !canAfford { return "コインが足りません（\(cost.formatted())必要）" }
         return "強化する　\(cost.formatted())コイン"
+    }
+
+    // MARK: - 記録
+
+    /// 「あと○人」以外の、積み上がっていく数字。
+    private var recordsSection: some View {
+        VStack(spacing: 14) {
+            headline
+
+            recordGroup("今日", rows: [
+                ("抜いた人数", "\(store.todaySkipped.formatted())人")
+            ])
+
+            recordGroup("最高記録", rows: [
+                ("一度に抜いた人数", "\(store.state.bestSingleSkip.formatted())人"),
+                ("最大コンボ", "\(store.state.bestCombo)連続")
+            ])
+
+            recordGroup("積み上げ", rows: [
+                ("累計で抜いた人数", "\(store.state.totalSkipped.formatted())人"),
+                ("クリアした行列", "\(store.state.stagesCleared)本"),
+                ("こなしたミッション", "\(store.state.missionsCleared)回"),
+                ("前の人に絡んだ回数", "\(store.state.totalInteractions)回"),
+                ("割り込まれた人数", "\(store.totalCutIns)人"),
+                ("集めた記念品", "\(store.collectedPrizeIDs.count) / \(PrizeCatalog.all.count)")
+            ])
+
+            Text("並び始めて\(store.daysPlayed)日目")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.inkSecondary)
+                .padding(.top, 2)
+        }
+        .padding(16)
+    }
+
+    /// 累計で抜いた人数を大きく出す。ここが一番伸びる数字。
+    private var headline: some View {
+        VStack(spacing: 2) {
+            Text("これまでに抜いた人数")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.inkSecondary)
+            Text(store.state.totalSkipped.formatted())
+                .font(.system(size: 46, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(AppTheme.ink)
+            Text("人")
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(AppTheme.stamp.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func recordGroup(_ title: String, rows: [(String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.inkSecondary)
+
+            VStack(spacing: 6) {
+                ForEach(rows, id: \.0) { row in
+                    HStack {
+                        Text(row.0)
+                            .font(.subheadline)
+                        Spacer()
+                        Text(row.1)
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(AppTheme.ink)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity)
+            .background(.white)
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(AppTheme.ink.opacity(0.1), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
     }
 
     // MARK: - 今の効果

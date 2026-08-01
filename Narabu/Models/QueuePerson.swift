@@ -14,6 +14,11 @@ enum PersonType: CaseIterable, Sendable {
     case ghost
     case angel
     case astronaut
+    case yankee
+    case granny
+    case monk
+    case cosplayer
+    case foreignTourist
 
     var label: String {
         switch self {
@@ -29,6 +34,11 @@ enum PersonType: CaseIterable, Sendable {
         case .ghost: "亡霊"
         case .angel: "天使"
         case .astronaut: "宇宙飛行士"
+        case .yankee: "ヤンキー"
+        case .granny: "おばあちゃん"
+        case .monk: "僧侶"
+        case .cosplayer: "コスプレイヤー"
+        case .foreignTourist: "外国人観光客"
         }
     }
 
@@ -36,9 +46,10 @@ enum PersonType: CaseIterable, Sendable {
     var heightMultiplier: Double {
         switch self {
         case .baby: 0.55
+        case .granny: 0.86
         case .sumo: 1.12
         case .mascot: 1.08
-        case .samurai: 1.04
+        case .samurai, .cosplayer: 1.04
         default: 1.0
         }
     }
@@ -49,6 +60,7 @@ enum PersonType: CaseIterable, Sendable {
         case .sumo: 1.85
         case .mascot: 1.5
         case .baby: 1.25
+        case .granny: 0.92
         case .alien: 0.82
         default: 1.0
         }
@@ -57,7 +69,7 @@ enum PersonType: CaseIterable, Sendable {
     /// その場所で見かけやすいか。景色が変わると並んでいる顔ぶれも変わる。
     func weight(in scene: SceneKind) -> Double {
         switch (self, scene) {
-        case (.ordinary, _): 26
+        case (.ordinary, _): 24
         case (.alien, .space): 14
         case (.astronaut, .space): 10
         case (.ghost, .hell), (.ghost, .heaven): 14
@@ -66,7 +78,13 @@ enum PersonType: CaseIterable, Sendable {
         case (.samurai, .forest): 6
         case (.mascot, .park): 14
         case (.baby, .park): 8
+        case (.cosplayer, .hall): 16
+        case (.cosplayer, .night): 10
         case (.maid, .night), (.mascot, .hall): 10
+        case (.yankee, .night), (.yankee, .shopping): 8
+        case (.granny, .residential), (.granny, .shopping): 9
+        case (.monk, .heaven), (.monk, .forest): 8
+        case (.foreignTourist, .ramen), (.foreignTourist, .park): 10
         case (.sumo, .ramen), (.sumo, .shopping): 5
         case (.alien, _), (.astronaut, _), (.ghost, _), (.angel, _): 0.4
         default: 2.2
@@ -183,7 +201,27 @@ enum PersonFactory {
         "ラーメン、そんなに好きじゃないんです。",
         "天国を過ぎたら、あと少しです。",
         "この行列、地球3周してるそうです。",
-        "抜かした人は帰ってこないらしいですよ。"
+        "抜かした人は帰ってこないらしいですよ。",
+
+        // 並んでいるあいだの、ただの呟き。
+        "寒いな〜。",
+        "あと何分だろう。",
+        "腹減った。",
+        "足がもう限界。",
+        "トイレ行きたい。",
+        "充電が20%を切った。",
+        "座りたい。",
+        "誰か場所取っといてくれないかな。",
+        "さっきから同じ景色。",
+        "帰ろうかな。",
+        "並ぶの、嫌いじゃないんですよね。",
+        "この列、いい感じに進んでますよ。",
+        "後ろ、まだ増えてます。",
+        "私、並ぶの得意なんです。",
+        "傘、持ってくればよかった。",
+        "予定より2時間おしてます。",
+        "友達を待たせてるんですけどね。",
+        "並び始めたの、覚えてないんです。"
     ]
 
     private static let skinTones = [
@@ -240,7 +278,7 @@ enum PersonFactory {
             personality: personality(for: activity, index: index),
             hairStyle: pick(HairStyle.allCases, index, 0x33C5),
             skin: skin(for: type, index: index),
-            hair: pick(hairColors, index, 0x55E7),
+            hair: hair(for: type, index: index),
             top: top(for: type, index: index),
             bottom: bottom(for: type, index: index),
             accent: pick(topColors, index, 0x881A),
@@ -282,6 +320,17 @@ enum PersonFactory {
         }
     }
 
+    /// 種類によっては髪の色が決まっている。金髪のヤンキー、白髪のおばあちゃんなど。
+    private static func hair(for type: PersonType, index: Int) -> Color {
+        switch type {
+        case .yankee: Color(red: 0.90, green: 0.78, blue: 0.32)
+        case .granny: Color(red: 0.88, green: 0.88, blue: 0.90)
+        case .monk: Color(red: 0.72, green: 0.58, blue: 0.46)
+        case .cosplayer: Color(red: 0.86, green: 0.36, blue: 0.62)
+        default: pick(hairColors, index, 0x55E7)
+        }
+    }
+
     private static func top(for type: PersonType, index: Int) -> Color {
         switch type {
         case .suit: Color(red: 0.20, green: 0.22, blue: 0.28)
@@ -294,6 +343,11 @@ enum PersonFactory {
         case .ghost: Color(red: 0.80, green: 0.84, blue: 0.92)
         case .baby: Color(red: 0.98, green: 0.86, blue: 0.62)
         case .alien: Color(red: 0.52, green: 0.76, blue: 0.48)
+        case .yankee: Color(red: 0.86, green: 0.70, blue: 0.16)
+        case .granny: Color(red: 0.78, green: 0.62, blue: 0.70)
+        case .monk: Color(red: 0.62, green: 0.36, blue: 0.16)
+        case .cosplayer: Color(red: 0.34, green: 0.72, blue: 0.84)
+        case .foreignTourist: Color(red: 0.94, green: 0.84, blue: 0.46)
         case .mascot: pick(topColors, index, 0x66F8)
         case .ordinary: pick(topColors, index, 0x66F8)
         }
@@ -310,6 +364,11 @@ enum PersonFactory {
         case .angel, .ghost: Color(red: 0.90, green: 0.92, blue: 0.96)
         case .baby: Color(red: 0.96, green: 0.92, blue: 0.80)
         case .alien: Color(red: 0.46, green: 0.70, blue: 0.44)
+        case .yankee: Color(red: 0.20, green: 0.20, blue: 0.24)
+        case .granny: Color(red: 0.52, green: 0.44, blue: 0.48)
+        case .monk: Color(red: 0.54, green: 0.30, blue: 0.14)
+        case .cosplayer: Color(red: 0.28, green: 0.30, blue: 0.52)
+        case .foreignTourist: Color(red: 0.36, green: 0.48, blue: 0.62)
         case .mascot: pick(topColors, index, 0x7709)
         case .ordinary: pick(bottomColors, index, 0x7709)
         }

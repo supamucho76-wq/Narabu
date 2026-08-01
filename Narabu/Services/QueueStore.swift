@@ -213,7 +213,7 @@ final class QueueStore {
         if state.inventory[item.id] == 0 {
             state.inventory.removeValue(forKey: item.id)
         }
-        state.totalSkipped += skipped
+        record(skipped: skipped)
         moveAnchor(to: progress + skipped)
         save()
 
@@ -270,6 +270,7 @@ final class QueueStore {
 
         let souvenir = recordSouvenir(for: cleared)
         state.clearedStages.insert(cleared.id)
+        state.stagesCleared += 1
         advanceToNextStage()
         save()
 
@@ -365,7 +366,7 @@ final class QueueStore {
             )
         }
 
-        combo = outcome.keepsCombo ? combo + 1 : 0
+        updateCombo(outcome.keepsCombo ? combo + 1 : 0)
 
         if outcome.advance != 0 {
             moveAnchor(to: min(stage.queueLength, max(0, progress + outcome.advance)))
@@ -453,13 +454,13 @@ final class QueueStore {
         )
 
         changeAlert(by: outcome.alertDelta)
-        combo = outcome.succeeded ? combo + 1 : 0
+        updateCombo(outcome.succeeded ? combo + 1 : 0)
 
         if outcome.advance != 0 {
             moveAnchor(to: min(stage.queueLength, max(0, progress + outcome.advance)))
         }
         if outcome.succeeded {
-            state.totalSkipped += outcome.advance
+            record(skipped: outcome.advance)
             state.coins += outcome.advance
         }
 
@@ -519,11 +520,13 @@ final class QueueStore {
         let coins = success ? mission.coins : mission.consolationCoins
 
         state.coins += coins
-        combo = success ? combo + 1 : 0
+        updateCombo(success ? combo + 1 : 0)
+        if success { state.missionsCleared += 1 }
         // ミッションをやり切ると気持ちが切り替わり、集中が大きく戻る。
         restoreFocus(success ? 45 : 20)
 
         if advance != 0 {
+            record(skipped: advance)
             moveAnchor(to: min(stage.queueLength, max(0, progress + advance)))
         }
 
@@ -534,9 +537,42 @@ final class QueueStore {
 
     /// 課金して前の人を追い抜く。
     func skipAhead(by people: Int) {
-        state.totalSkipped += people
+        record(skipped: people)
         moveAnchor(to: min(stage.queueLength, progress + people))
         save()
+    }
+
+    // MARK: - 記録
+
+    /// 抜いた人数を記録に足す。日付が変わっていれば今日のぶんを数え直す。
+    private func record(skipped: Int) {
+        guard skipped > 0 else { return }
+
+        state.totalSkipped += skipped
+        state.bestSingleSkip = max(state.bestSingleSkip, skipped)
+
+        if Calendar.current.isDate(state.todayStartedOn, inSameDayAs: now) {
+            state.todaySkipped += skipped
+        } else {
+            state.todayStartedOn = now
+            state.todaySkipped = skipped
+        }
+    }
+
+    /// 今日抜いた人数。日付が変わっていれば0から。
+    var todaySkipped: Int {
+        Calendar.current.isDate(state.todayStartedOn, inSameDayAs: now) ? state.todaySkipped : 0
+    }
+
+    /// 遊び始めてからの日数。
+    var daysPlayed: Int {
+        max(1, (Calendar.current.dateComponents([.day], from: state.joinedAt, to: now).day ?? 0) + 1)
+    }
+
+    /// コンボの記録を更新する。
+    private func updateCombo(_ newValue: Int) {
+        combo = newValue
+        state.bestCombo = max(state.bestCombo, newValue)
     }
 
     /// 基準を今に張り直す。割り込まれた人数は先に確定させてから移す。

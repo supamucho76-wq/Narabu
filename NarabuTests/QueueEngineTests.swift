@@ -817,6 +817,10 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(state.totalInteractions, 7, "遊んだ記録は残る")
         XCTAssertTrue(state.inventory.isEmpty)
         XCTAssertEqual(state.coins, 0)
+        // あとから足した記録も、古いデータから読めなくならないこと。
+        XCTAssertEqual(state.bestCombo, 0)
+        XCTAssertEqual(state.stagesCleared, 0)
+        XCTAssertEqual(state.todaySkipped, 0)
     }
 
     // MARK: - 人と景品
@@ -830,6 +834,37 @@ final class QueueEngineTests: XCTestCase {
             PersonFactory.person(atQueueIndex: $0, scene: .shopping).descriptor
         })
         XCTAssertGreaterThan(descriptors.count, 60, "並んでいる人が似たり寄ったりで飽きる")
+    }
+
+    /// 眺めているだけで飽きないよう、顔ぶれに幅があること。
+    func testCrowdHasPlentyOfCharacterTypes() {
+        XCTAssertGreaterThanOrEqual(PersonType.allCases.count, 15, "並んでいる人の種類が少ない")
+
+        for type in PersonType.allCases where type != .ordinary {
+            XCTAssertFalse(type.label.isEmpty, "\(type)に名前がない")
+        }
+    }
+
+    /// 新しく足した顔ぶれが、ちゃんと列に出てくること。
+    func testNewCharacterTypesActuallyAppear() {
+        func types(in scene: SceneKind) -> Set<PersonType> {
+            Set((0..<400).map { PersonFactory.person(atQueueIndex: $0, scene: scene).type })
+        }
+
+        XCTAssertTrue(types(in: .hall).contains(.cosplayer), "会場にコスプレイヤーがいない")
+        XCTAssertTrue(types(in: .residential).contains(.granny), "住宅街におばあちゃんがいない")
+        XCTAssertTrue(types(in: .ramen).contains(.foreignTourist), "店の前に観光客がいない")
+    }
+
+    /// 吹き出しに、並んでいる最中の呟きが混じっていること。
+    func testRemarksIncludeEverydayMutters() {
+        let remarks = Set((0..<600).map {
+            PersonFactory.person(atQueueIndex: $0, scene: .shopping).remark
+        })
+
+        XCTAssertGreaterThan(remarks.count, 20, "吹き出しの種類が少なくて繰り返しに見える")
+        XCTAssertTrue(remarks.contains { $0.contains("腹減った") || $0.contains("寒い") },
+                      "ただの呟きが入っていない")
     }
 
     func testCrowdChangesWithTheScenery() {

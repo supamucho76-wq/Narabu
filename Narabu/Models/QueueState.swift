@@ -58,6 +58,20 @@ struct QueueState: Codable, Equatable {
     var alertAnchor: Double
     var alertAnchorDate: Date
 
+    // MARK: - 積み上がる記録
+
+    /// これまでに出した最大のコンボ。
+    var bestCombo: Int
+    /// 一度に抜いた最大人数。
+    var bestSingleSkip: Int
+    /// 達成したミッションの数。
+    var missionsCleared: Int
+    /// クリアしたステージの延べ数。
+    var stagesCleared: Int
+    /// 今日どれだけ抜いたか。日付が変わると数え直す。
+    var todaySkipped: Int
+    var todayStartedOn: Date
+
     static func initial(now: Date = .now) -> QueueState {
         QueueState(
             joinedAt: now,
@@ -84,7 +98,13 @@ struct QueueState: Codable, Equatable {
             focusAnchorDate: now,
             actionsSinceEvent: 0,
             alertAnchor: 0,
-            alertAnchorDate: now
+            alertAnchorDate: now,
+            bestCombo: 0,
+            bestSingleSkip: 0,
+            missionsCleared: 0,
+            stagesCleared: 0,
+            todaySkipped: 0,
+            todayStartedOn: now
         )
     }
 
@@ -115,7 +135,13 @@ struct QueueState: Codable, Equatable {
         focusAnchorDate: Date,
         actionsSinceEvent: Int,
         alertAnchor: Double,
-        alertAnchorDate: Date
+        alertAnchorDate: Date,
+        bestCombo: Int,
+        bestSingleSkip: Int,
+        missionsCleared: Int,
+        stagesCleared: Int,
+        todaySkipped: Int,
+        todayStartedOn: Date
     ) {
         self.joinedAt = joinedAt
         self.stageNumber = stageNumber
@@ -142,6 +168,12 @@ struct QueueState: Codable, Equatable {
         self.actionsSinceEvent = actionsSinceEvent
         self.alertAnchor = alertAnchor
         self.alertAnchorDate = alertAnchorDate
+        self.bestCombo = bestCombo
+        self.bestSingleSkip = bestSingleSkip
+        self.missionsCleared = missionsCleared
+        self.stagesCleared = stagesCleared
+        self.todaySkipped = todaySkipped
+        self.todayStartedOn = todayStartedOn
     }
 
     init(from decoder: Decoder) throws {
@@ -184,6 +216,13 @@ struct QueueState: Codable, Equatable {
         actionsSinceEvent = try container.decodeIfPresent(Int.self, forKey: .actionsSinceEvent) ?? 0
         alertAnchor = try container.decodeIfPresent(Double.self, forKey: .alertAnchor) ?? 0
         alertAnchorDate = try container.decodeIfPresent(Date.self, forKey: .alertAnchorDate) ?? now
+
+        bestCombo = try container.decodeIfPresent(Int.self, forKey: .bestCombo) ?? 0
+        bestSingleSkip = try container.decodeIfPresent(Int.self, forKey: .bestSingleSkip) ?? 0
+        missionsCleared = try container.decodeIfPresent(Int.self, forKey: .missionsCleared) ?? 0
+        stagesCleared = try container.decodeIfPresent(Int.self, forKey: .stagesCleared) ?? 0
+        todaySkipped = try container.decodeIfPresent(Int.self, forKey: .todaySkipped) ?? 0
+        todayStartedOn = try container.decodeIfPresent(Date.self, forKey: .todayStartedOn) ?? now
     }
 }
 

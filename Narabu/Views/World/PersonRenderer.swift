@@ -276,6 +276,97 @@ enum PersonRenderer {
                      cornerRadius: torsoRect.width * 0.16),
                 with: .color(Color(red: 0.68, green: 0.70, blue: 0.76))
             )
+
+        case .yankee:
+            // 逆立てた金髪
+            for index in 0..<5 {
+                let x = headRect.minX + w * (0.12 + Double(index) * 0.19)
+                var spike = Path()
+                spike.move(to: CGPoint(x: x - w * 0.07, y: headRect.minY + w * 0.12))
+                spike.addLine(to: CGPoint(x: x, y: headRect.minY - w * 0.28))
+                spike.addLine(to: CGPoint(x: x + w * 0.07, y: headRect.minY + w * 0.12))
+                spike.closeSubpath()
+                context.fill(spike, with: .color(person.hair))
+            }
+            // 立てた襟
+            for side in [-1.0, 1.0] {
+                var collar = Path()
+                collar.move(to: CGPoint(x: torsoRect.midX + side * torsoRect.width * 0.2, y: torsoRect.minY))
+                collar.addLine(to: CGPoint(x: torsoRect.midX + side * torsoRect.width * 0.5,
+                                           y: torsoRect.minY - height * 0.05))
+                collar.addLine(to: CGPoint(x: torsoRect.midX + side * torsoRect.width * 0.5, y: torsoRect.minY))
+                collar.closeSubpath()
+                context.fill(collar, with: .color(person.bottom))
+            }
+
+        case .granny:
+            // 白髪のお団子
+            let bun = CGRect(x: headRect.midX - w * 0.22, y: headRect.minY - w * 0.22,
+                             width: w * 0.44, height: w * 0.44)
+            context.fill(Path(ellipseIn: bun), with: .color(person.hair))
+            context.fill(
+                Path(roundedRect: CGRect(x: headRect.minX, y: headRect.minY,
+                                         width: w, height: headRect.height * 0.5),
+                     cornerSize: CGSize(width: w * 0.5, height: w * 0.4)),
+                with: .color(person.hair)
+            )
+            // 杖
+            context.fill(
+                Path(CGRect(x: torsoRect.maxX + height * 0.02, y: torsoRect.minY,
+                            width: max(1, height * 0.014), height: height * 0.44)),
+                with: .color(Color(red: 0.44, green: 0.32, blue: 0.20))
+            )
+
+        case .monk:
+            // 剃った頭は描かず、袈裟の帯だけ通す。
+            var sash = Path()
+            sash.move(to: CGPoint(x: torsoRect.minX, y: torsoRect.minY + torsoRect.height * 0.18))
+            sash.addLine(to: CGPoint(x: torsoRect.maxX, y: torsoRect.minY))
+            sash.addLine(to: CGPoint(x: torsoRect.maxX, y: torsoRect.minY + torsoRect.height * 0.26))
+            sash.addLine(to: CGPoint(x: torsoRect.minX, y: torsoRect.minY + torsoRect.height * 0.44))
+            sash.closeSubpath()
+            context.fill(sash, with: .color(Color(red: 0.86, green: 0.72, blue: 0.24)))
+
+        case .cosplayer:
+            // 派手な長い髪
+            context.fill(
+                Path(roundedRect: CGRect(x: headRect.minX - w * 0.12, y: headRect.minY,
+                                         width: w * 1.24, height: headRect.height * 1.7),
+                     cornerSize: CGSize(width: w * 0.55, height: w * 0.55)),
+                with: .color(person.hair)
+            )
+            // 大きなリボン
+            for side in [-1.0, 1.0] {
+                context.fill(
+                    Path(ellipseIn: CGRect(x: headRect.midX + side * w * 0.42 - w * 0.24,
+                                           y: headRect.minY - w * 0.16,
+                                           width: w * 0.48, height: w * 0.34)),
+                    with: .color(person.accent)
+                )
+            }
+
+        case .foreignTourist:
+            // つば付きの帽子
+            context.fill(
+                Path(ellipseIn: CGRect(x: headRect.minX - w * 0.3, y: headRect.minY + w * 0.06,
+                                       width: w * 1.6, height: w * 0.22)),
+                with: .color(person.accent)
+            )
+            context.fill(
+                Path(roundedRect: CGRect(x: headRect.minX + w * 0.1, y: headRect.minY - w * 0.16,
+                                         width: w * 0.8, height: w * 0.3),
+                     cornerSize: CGSize(width: w * 0.3, height: w * 0.3)),
+                with: .color(person.accent)
+            )
+            // 首から下げたカメラ
+            let cameraW = height * 0.09
+            context.fill(
+                Path(roundedRect: CGRect(x: torsoRect.midX - cameraW / 2,
+                                         y: torsoRect.minY + torsoRect.height * 0.24,
+                                         width: cameraW, height: cameraW * 0.7),
+                     cornerRadius: cameraW * 0.16),
+                with: .color(Color(red: 0.18, green: 0.18, blue: 0.20))
+            )
         }
     }
 
