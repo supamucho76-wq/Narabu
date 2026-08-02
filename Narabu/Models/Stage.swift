@@ -122,6 +122,74 @@ enum StageCatalog {
             arrivalStory: "海を渡り、砂漠を抜け、宇宙を通り、地獄と天国を経て、\nようやく丼が置かれた。ごく普通の、うまいラーメンだった。",
             reward: StageReward(coins: 3_000, gachaTickets: 5,
                                 equipmentID: nil, skillID: nil)
+        ),
+
+        // ここから先は、並んでいる先がだんだんおかしくなっていく。
+        //
+        // 序盤を現実にありそうな行列で固めているのは、この落差のため。
+        // **並んでいる先が非常識なほど、同じことをしている自分が可笑しく見える。**
+        Stage(
+            id: 8, name: "限定スニーカー発売日", queueLength: 1_500,
+            scenes: [.night, .shopping],
+            openingNote: "3日前から並んでいる人がいるらしい。",
+            arrivalHeadline: "シャッターが上がった",
+            arrivalStory: "3日ぶんの寝袋を畳んで、店内に入る。\n棚には、自分のサイズだけが残っていた。",
+            reward: StageReward(coins: 4_200, gachaTickets: 5,
+                                equipmentID: nil, skillID: nil)
+        ),
+        Stage(
+            id: 9, name: "空港の保安検査", queueLength: 2_000,
+            scenes: [.hall],
+            openingNote: "搭乗まであと20分。列は動いていない。",
+            arrivalHeadline: "ベルトを外した",
+            arrivalStory: "ノートパソコンをトレーに置き、靴を脱ぐ。\nゲートを抜けた瞬間、搭乗案内が最終呼び出しに変わった。",
+            reward: StageReward(coins: 5_800, gachaTickets: 5,
+                                equipmentID: nil, skillID: nil)
+        ),
+        Stage(
+            id: 10, name: "富士山頂のトイレ", queueLength: 3_000,
+            scenes: [.snow],
+            openingNote: "標高3776メートル。全員が同じ用事で並んでいる。",
+            arrivalHeadline: "扉が開いた",
+            arrivalStory: "日の出よりも、こちらのほうが待ち遠しかった。\n協力金は200円。人生でいちばん安いと思った。",
+            reward: StageReward(coins: 8_000, gachaTickets: 6,
+                                equipmentID: nil, skillID: nil)
+        ),
+        Stage(
+            id: 11, name: "宇宙船の搭乗口", queueLength: 4_500,
+            scenes: [.space],
+            openingNote: "地球を出る便は、今日この1便だけらしい。",
+            arrivalHeadline: "タラップを踏んだ",
+            arrivalStory: "窓の外に、さっきまで並んでいた地球が丸ごと見える。\n座席は通路側だった。",
+            reward: StageReward(coins: 12_000, gachaTickets: 7,
+                                equipmentID: nil, skillID: nil)
+        ),
+        Stage(
+            id: 12, name: "天国の入場審査", queueLength: 7_000,
+            scenes: [.heaven],
+            openingNote: "前の人が、生前のことを聞かれている。",
+            arrivalHeadline: "門の前に立った",
+            arrivalStory: "名簿をめくる音だけが響いている。\n「少々お待ちください」と言われた。並ぶのは、ここでも同じらしい。",
+            reward: StageReward(coins: 18_000, gachaTickets: 8,
+                                equipmentID: nil, skillID: nil)
+        ),
+        Stage(
+            id: 13, name: "転生待ちの列", queueLength: 10_000,
+            scenes: [.hell, .heaven],
+            openingNote: "次に何になるかは、窓口で決まるそうだ。",
+            arrivalHeadline: "窓口に呼ばれた",
+            arrivalStory: "希望を聞かれたので、行列のない人生と答えた。\n担当者は少し困った顔をして、番号札をもう1枚くれた。",
+            reward: StageReward(coins: 26_000, gachaTickets: 9,
+                                equipmentID: nil, skillID: nil)
+        ),
+        Stage(
+            id: 14, name: "「ならぶ」を買うための列", queueLength: 15_000,
+            scenes: [.residential, .shopping, .hall],
+            openingNote: "行列に並ぶゲームを買うために、行列に並んでいる。",
+            arrivalHeadline: "レジにたどり着いた",
+            arrivalStory: "ようやく手に入れた。家に帰って起動すると、\n画面の中の自分が、また最後尾に立っていた。",
+            reward: StageReward(coins: 40_000, gachaTickets: 12,
+                                equipmentID: nil, skillID: nil)
         )
     ]
 

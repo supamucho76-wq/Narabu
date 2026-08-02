@@ -27,6 +27,14 @@ enum LandmarkRenderer {
         case 4: shape.themePark(in: canvas)
         case 5: shape.liveVenue(in: canvas)
         case 6: shape.conventionHall(in: canvas)
+        case 7: shape.grandRamenShop(in: canvas)
+        case 8: shape.sneakerStore(in: canvas)
+        case 9: shape.securityGate(in: canvas)
+        case 10: shape.summitToilet(in: canvas)
+        case 11: shape.spaceport(in: canvas)
+        case 12: shape.heavenGate(in: canvas)
+        case 13: shape.rebirthCounter(in: canvas)
+        case 14: shape.gameShop(in: canvas)
         default: shape.grandRamenShop(in: canvas)
         }
     }
@@ -190,6 +198,252 @@ enum LandmarkRenderer {
                 Path(CGRect(x: body.minX + w * 0.12, y: body.minY + h * 0.28,
                             width: w * 0.76, height: h * 0.24)),
                 with: .color(tint(Color(red: 0.86, green: 0.28, blue: 0.30)))
+            )
+        }
+
+        // MARK: - だんだんおかしくなっていく行き先
+
+        /// 限定スニーカーの店。シャッターと巨大な靴の看板。
+        func sneakerStore(in context: GraphicsContext) {
+            let w = unit * 0.56
+            let h = rect.height * 0.5
+            let body = CGRect(x: centerX - w / 2, y: ground - h, width: w, height: h)
+
+            context.fill(Path(body), with: .color(tint(Color(red: 0.18, green: 0.18, blue: 0.22))))
+
+            // 半分だけ開いたシャッター
+            for index in 0..<5 {
+                let y = body.minY + h * 0.30 + Double(index) * h * 0.09
+                context.fill(
+                    Path(CGRect(x: body.minX + w * 0.08, y: y, width: w * 0.84, height: h * 0.05)),
+                    with: .color(tint(Color(red: 0.60, green: 0.62, blue: 0.66)))
+                )
+            }
+
+            // 屋根の上の靴の看板
+            let shoe = CGRect(x: centerX - w * 0.28, y: body.minY - h * 0.34,
+                              width: w * 0.56, height: h * 0.26)
+            var sole = Path()
+            sole.move(to: CGPoint(x: shoe.minX, y: shoe.maxY))
+            sole.addLine(to: CGPoint(x: shoe.maxX, y: shoe.maxY))
+            sole.addLine(to: CGPoint(x: shoe.maxX, y: shoe.midY))
+            sole.addQuadCurve(to: CGPoint(x: shoe.minX + shoe.width * 0.3, y: shoe.minY),
+                              control: CGPoint(x: shoe.midX, y: shoe.minY))
+            sole.addLine(to: CGPoint(x: shoe.minX, y: shoe.midY))
+            sole.closeSubpath()
+            context.fill(sole, with: .color(tint(Color(red: 0.94, green: 0.28, blue: 0.24))))
+        }
+
+        /// 保安検査。ゲートとトレー。
+        func securityGate(in context: GraphicsContext) {
+            let w = unit * 0.5
+            let h = rect.height * 0.56
+            let thickness = w * 0.16
+
+            // 門型のゲート
+            for side in [-1.0, 1.0] {
+                context.fill(
+                    Path(CGRect(x: centerX + side * (w / 2) - thickness / 2,
+                                y: ground - h, width: thickness, height: h)),
+                    with: .color(tint(Color(red: 0.78, green: 0.80, blue: 0.84)))
+                )
+            }
+            context.fill(
+                Path(CGRect(x: centerX - w / 2 - thickness / 2, y: ground - h,
+                            width: w + thickness, height: thickness)),
+                with: .color(tint(Color(red: 0.62, green: 0.66, blue: 0.72)))
+            )
+
+            // 通過を知らせる緑の灯り
+            let r = thickness * 0.5
+            context.fill(
+                Path(ellipseIn: CGRect(x: centerX - r / 2, y: ground - h + thickness * 1.3,
+                                       width: r, height: r)),
+                with: .color(tint(Color(red: 0.36, green: 0.82, blue: 0.46)))
+            )
+
+            // ベルトコンベアとトレー
+            let belt = CGRect(x: centerX - unit * 0.34, y: ground - h * 0.18,
+                              width: unit * 0.68, height: h * 0.10)
+            context.fill(Path(belt), with: .color(tint(Color(red: 0.32, green: 0.34, blue: 0.38))))
+            for index in 0..<3 {
+                context.fill(
+                    Path(CGRect(x: belt.minX + belt.width * (0.08 + Double(index) * 0.32),
+                                y: belt.minY - belt.height * 0.55,
+                                width: belt.width * 0.2, height: belt.height * 0.55)),
+                    with: .color(tint(Color(red: 0.56, green: 0.44, blue: 0.34)))
+                )
+            }
+        }
+
+        /// 富士山頂のトイレ。山の上に小屋がひとつ。
+        func summitToilet(in context: GraphicsContext) {
+            // 山
+            var mountain = Path()
+            mountain.move(to: CGPoint(x: centerX - unit * 0.5, y: ground))
+            mountain.addLine(to: CGPoint(x: centerX, y: ground - rect.height * 0.62))
+            mountain.addLine(to: CGPoint(x: centerX + unit * 0.5, y: ground))
+            mountain.closeSubpath()
+            context.fill(mountain, with: .color(tint(Color(red: 0.36, green: 0.40, blue: 0.50))))
+
+            // 冠雪
+            var snow = Path()
+            snow.move(to: CGPoint(x: centerX - unit * 0.17, y: ground - rect.height * 0.41))
+            snow.addLine(to: CGPoint(x: centerX, y: ground - rect.height * 0.62))
+            snow.addLine(to: CGPoint(x: centerX + unit * 0.17, y: ground - rect.height * 0.41))
+            snow.closeSubpath()
+            context.fill(snow, with: .color(tint(Color(red: 0.96, green: 0.97, blue: 1.0))))
+
+            // 頂上の小屋。こんなところにも列がある。
+            let w = unit * 0.16
+            let h = rect.height * 0.16
+            let hut = CGRect(x: centerX - w / 2, y: ground - rect.height * 0.58 - h * 0.2,
+                             width: w, height: h)
+            context.fill(Path(hut), with: .color(tint(Color(red: 0.70, green: 0.68, blue: 0.64))))
+            var roof = Path()
+            roof.move(to: CGPoint(x: hut.minX - w * 0.16, y: hut.minY))
+            roof.addLine(to: CGPoint(x: hut.maxX + w * 0.16, y: hut.minY))
+            roof.addLine(to: CGPoint(x: centerX, y: hut.minY - h * 0.4))
+            roof.closeSubpath()
+            context.fill(roof, with: .color(tint(Color(red: 0.42, green: 0.38, blue: 0.36))))
+        }
+
+        /// 宇宙船の搭乗口。ロケットとタラップ。
+        func spaceport(in context: GraphicsContext) {
+            let w = unit * 0.22
+            let h = rect.height * 0.72
+            let body = CGRect(x: centerX - w / 2, y: ground - h, width: w, height: h)
+
+            context.fill(
+                Path(roundedRect: body, cornerRadius: w * 0.35),
+                with: .color(tint(Color(red: 0.92, green: 0.93, blue: 0.96)))
+            )
+
+            // 先端
+            var nose = Path()
+            nose.move(to: CGPoint(x: body.minX, y: body.minY + h * 0.06))
+            nose.addLine(to: CGPoint(x: centerX, y: body.minY - h * 0.2))
+            nose.addLine(to: CGPoint(x: body.maxX, y: body.minY + h * 0.06))
+            nose.closeSubpath()
+            context.fill(nose, with: .color(tint(Color(red: 0.86, green: 0.26, blue: 0.22))))
+
+            // 窓
+            let r = w * 0.4
+            context.fill(
+                Path(ellipseIn: CGRect(x: centerX - r / 2, y: body.minY + h * 0.22,
+                                       width: r, height: r)),
+                with: .color(tint(Color(red: 0.42, green: 0.72, blue: 0.92)))
+            )
+
+            // 搭乗タラップ
+            var ramp = Path()
+            ramp.move(to: CGPoint(x: body.maxX, y: ground - h * 0.3))
+            ramp.addLine(to: CGPoint(x: centerX + unit * 0.36, y: ground))
+            ramp.addLine(to: CGPoint(x: centerX + unit * 0.30, y: ground))
+            ramp.addLine(to: CGPoint(x: body.maxX, y: ground - h * 0.38))
+            ramp.closeSubpath()
+            context.fill(ramp, with: .color(tint(Color(red: 0.58, green: 0.60, blue: 0.66))))
+        }
+
+        /// 天国の門。柱と、その上の輪。
+        func heavenGate(in context: GraphicsContext) {
+            let w = unit * 0.46
+            let h = rect.height * 0.6
+            let pillar = w * 0.15
+
+            for side in [-1.0, 1.0] {
+                context.fill(
+                    Path(CGRect(x: centerX + side * (w / 2) - pillar / 2,
+                                y: ground - h, width: pillar, height: h)),
+                    with: .color(tint(Color(red: 0.98, green: 0.97, blue: 0.90)))
+                )
+            }
+
+            // まぐさ
+            context.fill(
+                Path(CGRect(x: centerX - w / 2 - pillar, y: ground - h,
+                            width: w + pillar * 2, height: pillar * 0.9)),
+                with: .color(tint(Color(red: 0.94, green: 0.90, blue: 0.78)))
+            )
+
+            // 門の上に浮かぶ輪
+            let ring = w * 0.42
+            context.stroke(
+                Path(ellipseIn: CGRect(x: centerX - ring / 2, y: ground - h - ring * 0.9,
+                                       width: ring, height: ring * 0.42)),
+                with: .color(tint(Color(red: 1.0, green: 0.90, blue: 0.42))),
+                lineWidth: max(2, ring * 0.14)
+            )
+
+            // 門の内側から漏れる光
+            context.fill(
+                Path(CGRect(x: centerX - w / 2 + pillar / 2, y: ground - h + pillar,
+                            width: w - pillar, height: h - pillar)),
+                with: .color(tint(Color(red: 1.0, green: 0.98, blue: 0.84)).opacity(silhouette ? 1 : 0.55))
+            )
+        }
+
+        /// 転生の窓口。役所のカウンターと番号表示。
+        func rebirthCounter(in context: GraphicsContext) {
+            let w = unit * 0.62
+            let h = rect.height * 0.46
+            let body = CGRect(x: centerX - w / 2, y: ground - h, width: w, height: h)
+
+            context.fill(Path(body), with: .color(tint(Color(red: 0.80, green: 0.78, blue: 0.72))))
+
+            // カウンター
+            context.fill(
+                Path(CGRect(x: body.minX - w * 0.06, y: ground - h * 0.28,
+                            width: w * 1.12, height: h * 0.12)),
+                with: .color(tint(Color(red: 0.52, green: 0.42, blue: 0.32)))
+            )
+
+            // 番号表示。あと何人かは分からない。
+            let board = CGRect(x: centerX - w * 0.22, y: body.minY + h * 0.14,
+                               width: w * 0.44, height: h * 0.26)
+            context.fill(Path(board), with: .color(tint(Color(red: 0.14, green: 0.16, blue: 0.20))))
+            for index in 0..<3 {
+                context.fill(
+                    Path(CGRect(x: board.minX + board.width * (0.14 + Double(index) * 0.26),
+                                y: board.minY + board.height * 0.26,
+                                width: board.width * 0.14, height: board.height * 0.48)),
+                    with: .color(tint(Color(red: 0.96, green: 0.42, blue: 0.28)))
+                )
+            }
+        }
+
+        /// ゲームショップ。並ぶために並ぶ場所。
+        func gameShop(in context: GraphicsContext) {
+            let w = unit * 0.56
+            let h = rect.height * 0.48
+            let body = CGRect(x: centerX - w / 2, y: ground - h, width: w, height: h)
+
+            context.fill(Path(body), with: .color(tint(Color(red: 0.24, green: 0.26, blue: 0.34))))
+
+            // ショーウィンドウ
+            context.fill(
+                Path(CGRect(x: body.minX + w * 0.08, y: body.minY + h * 0.34,
+                            width: w * 0.84, height: h * 0.44)),
+                with: .color(tint(Color(red: 0.72, green: 0.84, blue: 0.94)))
+            )
+
+            // 窓の中に並んでいる、小さな人の影
+            for index in 0..<5 {
+                let personWidth = w * 0.055
+                let x = body.minX + w * 0.16 + Double(index) * w * 0.16
+                context.fill(
+                    Path(roundedRect: CGRect(x: x, y: body.minY + h * 0.48,
+                                             width: personWidth, height: h * 0.26),
+                         cornerRadius: personWidth * 0.4),
+                    with: .color(tint(Color(red: 0.30, green: 0.32, blue: 0.40)))
+                )
+            }
+
+            // 看板
+            context.fill(
+                Path(CGRect(x: body.minX + w * 0.14, y: body.minY - h * 0.2,
+                            width: w * 0.72, height: h * 0.2)),
+                with: .color(tint(Color(red: 0.96, green: 0.78, blue: 0.28)))
             )
         }
 

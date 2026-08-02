@@ -864,6 +864,43 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - ステージの並び
+
+    /// 進むほど行列が長くなること。順番が入れ替わっていないこと。
+    func testStagesGetLongerAsYouGo() {
+        let lengths = StageCatalog.stages.map(\.queueLength)
+
+        for (shorter, longer) in zip(lengths, lengths.dropFirst()) {
+            XCTAssertGreaterThan(longer, shorter, "後のステージのほうが短くなっている")
+        }
+        XCTAssertGreaterThanOrEqual(StageCatalog.stages.count, 14, "ステージが減っている")
+    }
+
+    /// どのステージにも、たどり着いた先の絵と言葉があること。
+    func testEveryStageIsFullyDescribed() {
+        var ids: Set<Int> = []
+
+        for stage in StageCatalog.stages {
+            XCTAssertFalse(stage.name.isEmpty)
+            XCTAssertFalse(stage.openingNote.isEmpty, "\(stage.name)に最後尾の一言がない")
+            XCTAssertFalse(stage.arrivalHeadline.isEmpty, "\(stage.name)に到着の見出しがない")
+            XCTAssertFalse(stage.arrivalStory.isEmpty, "\(stage.name)に到着の情景がない")
+            XCTAssertFalse(stage.scenes.isEmpty, "\(stage.name)に通る景色がない")
+            XCTAssertTrue(ids.insert(stage.id).inserted, "\(stage.name)のidが重複している")
+        }
+    }
+
+    /// 周回しても、壊れた番号で落ちないこと。
+    func testStageLookupSurvivesStrangeNumbers() {
+        for number in [-99, -1, 0, 1, 14, 15, 200] {
+            for lap in [1, 2, 7] {
+                let stage = StageCatalog.stage(number: number, lap: lap)
+                XCTAssertGreaterThan(stage.queueLength, 0)
+                XCTAssertFalse(stage.name.isEmpty)
+            }
+        }
+    }
+
     // MARK: - クリア後のオチ
 
     /// どのステージでも必ずオチがつくこと。

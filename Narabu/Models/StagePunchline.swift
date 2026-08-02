@@ -129,6 +129,97 @@ enum PunchlineCatalog {
                     symbolName: "book.closed.fill"
                 )
             ]
+        case 8:
+            return [
+                StagePunchline(
+                    headline: "サイズがなかった",
+                    detail: "残っていたのは18センチと31センチだけだった。",
+                    symbolName: "shoe.fill"
+                ),
+                StagePunchline(
+                    headline: "抽選販売でした",
+                    detail: "3日間、並ぶ必要はまったくなかった。",
+                    symbolName: "dice.fill"
+                )
+            ]
+        case 9:
+            return [
+                StagePunchline(
+                    headline: "搭乗口が変更になりました",
+                    detail: "反対側の端。走っても15分かかる。",
+                    symbolName: "airplane.departure"
+                ),
+                StagePunchline(
+                    headline: "ポケットに小銭が残っていた",
+                    detail: "最初からやり直しです。",
+                    symbolName: "arrow.counterclockwise"
+                )
+            ]
+        case 10:
+            return [
+                StagePunchline(
+                    headline: "紙がありませんでした",
+                    detail: "標高3776メートル。誰も持っていなかった。",
+                    symbolName: "wind"
+                ),
+                StagePunchline(
+                    headline: "もう我慢できなくなっていた",
+                    detail: "並んでいる途中で、なんとかなってしまった。",
+                    symbolName: "hare.fill"
+                )
+            ]
+        case 11:
+            return [
+                StagePunchline(
+                    headline: "パスポートは地球に忘れた",
+                    detail: "取りに戻ると、次の便は120年後になる。",
+                    symbolName: "globe.asia.australia.fill"
+                ),
+                StagePunchline(
+                    headline: "行き先は火星でした",
+                    detail: "そこにも行列があるらしい。",
+                    symbolName: "circle.hexagonpath.fill"
+                )
+            ]
+        case 12:
+            return [
+                StagePunchline(
+                    headline: "審査の結果、差し戻し",
+                    detail: "生前の列抜かしが、全部記録に残っていた。",
+                    symbolName: "doc.text.magnifyingglass"
+                ),
+                StagePunchline(
+                    headline: "本日の受付は終了しました",
+                    detail: "また明日。明日がいつなのかは教えてもらえなかった。",
+                    symbolName: "moon.stars.fill"
+                )
+            ]
+        case 13:
+            return [
+                StagePunchline(
+                    headline: "次は「並んでいる人」です",
+                    detail: "希望は通らなかった。",
+                    symbolName: "arrow.triangle.2.circlepath"
+                ),
+                StagePunchline(
+                    headline: "番号札をもう1枚渡された",
+                    detail: "こちらの列にもお並びください、とのことだった。",
+                    symbolName: "ticket.fill"
+                )
+            ]
+        case 14:
+            return [
+                StagePunchline(
+                    headline: "ダウンロード版が出ていた",
+                    detail: "並ばずに買えたらしい。しかも半額。",
+                    symbolName: "arrow.down.circle.fill"
+                ),
+                StagePunchline(
+                    headline: "起動したら、また最後尾だった",
+                    detail: "画面の中の自分が、こちらを見た気がした。",
+                    symbolName: "iphone.gen3"
+                )
+            ]
         default:
             return []
         }
