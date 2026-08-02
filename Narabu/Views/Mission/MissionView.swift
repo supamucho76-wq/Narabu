@@ -7,6 +7,8 @@ import UIKit
 /// 失敗しても必ずここから出られるよう、自動で閉じる処理とボタンの両方を残す。
 struct MissionView: View {
     let mission: Mission
+    /// 成功したら実際に進む人数。連続成功の倍率がかかった値。
+    let reward: Int
     /// 成否を親に返す。列を進めるのは親の仕事。
     let onFinish: (Bool) -> Void
 
@@ -101,7 +103,7 @@ struct MissionView: View {
                 .foregroundStyle(AppTheme.ink)
 
             if success {
-                Text("\(mission.reward)人 前へ進んだ　＋\(mission.coins)コイン")
+                Text("\(reward)人 前へ進んだ　＋\(mission.coins)コイン")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.inkSecondary)
             } else {

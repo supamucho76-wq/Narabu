@@ -323,8 +323,36 @@ final class QueueStore {
     /// コンボによる追加の前進。
     var comboBonus: Int { combo >= 5 ? 1 : 0 }
 
-    /// 一定のコンボから、しばらく前進が倍になる。
-    var isFever: Bool { combo >= 10 }
+    /// いまの連続成功の段。抜ける人数の倍率はここで決まる。
+    var comboTier: ComboTier { ComboTier.of(combo) }
+
+    /// 一定のコンボから、しばらく前進が倍以上になる。
+    var isFever: Bool { comboTier >= .fever }
+
+    /// 次の段まであと何回続ければいいか。もう最上段なら nil。
+    var comboToNextTier: Int? {
+        guard let next = comboTier.next else { return nil }
+        return next.requiredCombo - combo
+    }
+
+    /// 自力で進んだぶんに、連続成功の倍率をかける。
+    ///
+    /// 下がるときにはかけない。連続を切らした罰まで重くすると、
+    /// 一度崩れたときに立て直す気がなくなる。
+    /// ガチャの乗り物は元から大きいので、ここは通さない。
+    private func boosted(_ advance: Int) -> Int {
+        guard advance > 0 else { return advance }
+        return max(advance, Int((Double(advance) * comboTier.multiplier).rounded()))
+    }
+
+    /// このミッションに成功したら、実際に何人抜けるか。
+    ///
+    /// 成功すれば連続が1つ伸びるので、**伸びたあとの段**で数える。
+    /// 画面に出す数と、実際に進む数を必ず一致させるため。
+    func projectedReward(for mission: Mission) -> Int {
+        let tier = ComboTier.of(combo + 1)
+        return max(mission.reward, Int((Double(mission.reward) * tier.multiplier).rounded()))
+    }
 
     func interactWithPersonAhead(_ action: QueueAction) -> ActionOutcome {
         guard !hasClearedStage else {
@@ -358,15 +386,17 @@ final class QueueStore {
             restoreFocus(6)
         }
 
-        if isFever, outcome.advance > 0 {
+        // 先に連続回数を数えてから倍率をかける。
+        // そうしないと、段に届いたその一手が倍率を受け取れない。
+        updateCombo(outcome.keepsCombo ? combo + 1 : 0)
+
+        if outcome.advance > 0 {
             outcome = ActionOutcome(
                 grade: outcome.grade,
                 message: outcome.message,
-                advance: outcome.advance * 2
+                advance: boosted(outcome.advance)
             )
         }
-
-        updateCombo(outcome.keepsCombo ? combo + 1 : 0)
 
         if outcome.advance != 0 {
             moveAnchor(to: min(stage.queueLength, max(0, progress + outcome.advance)))
@@ -443,7 +473,7 @@ final class QueueStore {
         state.totalInteractions += 1
         state.actionsSinceEvent += 1
 
-        let outcome = BreakthroughResolver.resolve(
+        let resolved = BreakthroughResolver.resolve(
             phrase: phrase,
             volume: volume,
             person: personAhead,
@@ -453,8 +483,19 @@ final class QueueStore {
             seed: state.totalInteractions &* 37 &+ remaining
         )
 
-        changeAlert(by: outcome.alertDelta)
-        updateCombo(outcome.succeeded ? combo + 1 : 0)
+        changeAlert(by: resolved.alertDelta)
+        // 数えてから倍率をかける。段に届いた一手がその場で効く。
+        updateCombo(resolved.succeeded ? combo + 1 : 0)
+
+        let outcome = BreakthroughOutcome(
+            phrase: resolved.phrase,
+            volume: resolved.volume,
+            succeeded: resolved.succeeded,
+            advance: boosted(resolved.advance),
+            alertDelta: resolved.alertDelta,
+            message: resolved.message,
+            caughtByGuard: resolved.caughtByGuard
+        )
 
         if outcome.advance != 0 {
             moveAnchor(to: min(stage.queueLength, max(0, progress + outcome.advance)))
@@ -529,11 +570,12 @@ final class QueueStore {
 
     /// ミッションの結果を反映して、次のミッションを用意する。
     func completeMission(_ mission: Mission, success: Bool) {
-        let advance = success ? mission.reward : mission.consolationReward
         let coins = success ? mission.coins : mission.consolationCoins
 
         state.coins += coins
+        // 数えてから倍率をかける。ミッションが倍率の主な受け皿になる。
         updateCombo(success ? combo + 1 : 0)
+        let advance = success ? boosted(mission.reward) : mission.consolationReward
         if success { state.missionsCleared += 1 }
         // ミッションをやり切ると気持ちが切り替わり、集中が大きく戻る。
         restoreFocus(success ? 45 : 20)

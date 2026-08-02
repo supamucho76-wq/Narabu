@@ -786,12 +786,16 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(Surge.Tier.of(15), .strong)
         XCTAssertEqual(Surge.Tier.of(29), .strong)
         XCTAssertEqual(Surge.Tier.of(30), .massive)
-        XCTAssertEqual(Surge.Tier.of(300), .massive)
+        XCTAssertEqual(Surge.Tier.of(99), .massive)
+        XCTAssertEqual(Surge.Tier.of(100), .huge)
+        XCTAssertEqual(Surge.Tier.of(299), .huge)
+        XCTAssertEqual(Surge.Tier.of(300), .unreal)
+        XCTAssertEqual(Surge.Tier.of(2_000), .unreal)
     }
 
     /// 段階が上がるほど、演出が長く強くなること。
     func testStrongerSurgesLastLongerAndPushHarder() {
-        let tiers: [Surge.Tier] = [.slight, .moderate, .strong, .massive]
+        let tiers: [Surge.Tier] = [.slight, .moderate, .strong, .massive, .huge, .unreal]
 
         for (weaker, stronger) in zip(tiers, tiers.dropFirst()) {
             XCTAssertGreaterThan(stronger.duration, weaker.duration)
@@ -800,20 +804,78 @@ final class QueueEngineTests: XCTestCase {
         }
 
         XCTAssertTrue(Surge.Tier.massive.flashes)
+        XCTAssertTrue(Surge.Tier.unreal.flashes)
         XCTAssertFalse(Surge.Tier.slight.flashes)
         XCTAssertTrue(Surge.Tier.strong.showsSpeedLines)
         XCTAssertFalse(Surge.Tier.moderate.showsSpeedLines)
     }
 
-    /// テンポを殺さないよう、演出は2秒以内で終わること。
+    /// テンポを殺さないよう、演出は3秒以内で終わること。
     func testSurgesNeverBlockPlayForTooLong() {
-        for people in [1, 5, 20, 100, 300] {
+        for people in [1, 5, 20, 100, 300, 5_000] {
             let surge = Surge(
-                fromRemaining: 500, peopleSkipped: people, startedAt: noon,
+                fromRemaining: 8_000, peopleSkipped: people, startedAt: noon,
                 vehicle: nil, vehicleName: nil
             )
-            XCTAssertLessThanOrEqual(surge.duration, 2.0, "\(people)人の演出が長すぎる")
+            XCTAssertLessThanOrEqual(surge.duration, 3.0, "\(people)人の演出が長すぎる")
         }
+    }
+
+    // MARK: - 連続成功の倍率
+
+    /// 連続を積むほど、一度に抜ける人数が跳ね上がること。
+    ///
+    /// 1000人の行列を19人ずつ削るのは作業なので、
+    /// 続けたぶんだけ大きくなる形で爽快感を作っている。
+    func testComboTiersRaiseTheMultiplier() {
+        XCTAssertEqual(ComboTier.of(0), .none)
+        XCTAssertEqual(ComboTier.of(2), .none)
+        XCTAssertEqual(ComboTier.of(3), .warm)
+        XCTAssertEqual(ComboTier.of(4), .warm)
+        XCTAssertEqual(ComboTier.of(5), .hot)
+        XCTAssertEqual(ComboTier.of(8), .fever)
+        XCTAssertEqual(ComboTier.of(12), .blaze)
+        XCTAssertEqual(ComboTier.of(16), .rampage)
+        XCTAssertEqual(ComboTier.of(500), .rampage)
+    }
+
+    /// 段が上がって倍率が下がることがないこと。
+    func testComboMultipliersOnlyGoUp() {
+        let tiers = ComboTier.allCases
+
+        for (lower, higher) in zip(tiers, tiers.dropFirst()) {
+            XCTAssertGreaterThan(higher.multiplier, lower.multiplier,
+                                 "\(higher)の倍率が\(lower)を上回っていない")
+            XCTAssertGreaterThan(higher.requiredCombo, lower.requiredCombo)
+        }
+
+        XCTAssertNil(ComboTier.none.multiplierLabel, "1倍のときに倍率を出している")
+        XCTAssertEqual(ComboTier.rampage.multiplier, 8)
+        XCTAssertNil(ComboTier.rampage.next, "最上段の先があることになっている")
+    }
+
+    /// 積み上げた見返りが、実際に桁として現れること。
+    ///
+    /// ステージ7のミッションは19人。連続を積んだときに
+    /// それが何人になるのかを、数字で固定しておく。
+    func testStreakTurnsASmallRewardIntoABigOne() {
+        let reward = 19
+
+        func skipped(afterStreakOf combo: Int) -> Int {
+            let tier = ComboTier.of(combo)
+            return max(reward, Int((Double(reward) * tier.multiplier).rounded()))
+        }
+
+        XCTAssertEqual(skipped(afterStreakOf: 1), 19)
+        XCTAssertEqual(skipped(afterStreakOf: 3), 29)
+        XCTAssertEqual(skipped(afterStreakOf: 5), 38)
+        XCTAssertEqual(skipped(afterStreakOf: 8), 57)
+        XCTAssertEqual(skipped(afterStreakOf: 12), 95)
+        XCTAssertEqual(skipped(afterStreakOf: 16), 152)
+
+        // 積んだ甲斐が演出にも出ること。
+        XCTAssertEqual(Surge.Tier.of(skipped(afterStreakOf: 1)), .strong)
+        XCTAssertEqual(Surge.Tier.of(skipped(afterStreakOf: 16)), .huge)
     }
 
     /// 数字は演出に合わせて減り、途中で戻らないこと。

@@ -6,28 +6,38 @@ import Foundation
 /// 数字だけ変わって終わると、何人抜いたのか体感できない。
 struct Surge: Equatable {
     /// 抜いた人数によって、演出の強さを変える。
+    /// 抜いた人数によって、演出の強さを変える。
+    ///
+    /// 連続成功で一度に何百人も抜けるようになったので、上に2段足してある。
+    /// 30人と300人が同じ絵だと、積み上げた甲斐がない。
     enum Tier: Equatable {
         case slight
         case moderate
         case strong
         case massive
+        case huge
+        case unreal
 
         static func of(_ people: Int) -> Tier {
             switch people {
             case ..<5: .slight
             case ..<15: .moderate
             case ..<30: .strong
-            default: .massive
+            case ..<100: .massive
+            case ..<300: .huge
+            default: .unreal
             }
         }
 
-        /// 演出の長さ。長すぎるとテンポが死ぬので、大きくても2秒以内。
+        /// 演出の長さ。長すぎるとテンポが死ぬので、上限は3秒。
         var duration: Double {
             switch self {
             case .slight: 0.45
             case .moderate: 0.8
             case .strong: 1.25
             case .massive: 1.9
+            case .huge: 2.4
+            case .unreal: 3.0
             }
         }
 
@@ -37,7 +47,7 @@ struct Surge: Equatable {
             case .slight: 0.35
             case .moderate: 0.7
             case .strong: 1.0
-            case .massive: 1.0
+            case .massive, .huge, .unreal: 1.0
             }
         }
 
@@ -45,12 +55,17 @@ struct Surge: Equatable {
         var showsSpeedLines: Bool {
             switch self {
             case .slight, .moderate: false
-            case .strong, .massive: true
+            case .strong, .massive, .huge, .unreal: true
             }
         }
 
         /// 画面を白く光らせるか。
-        var flashes: Bool { self == .massive }
+        var flashes: Bool {
+            switch self {
+            case .slight, .moderate, .strong: false
+            case .massive, .huge, .unreal: true
+            }
+        }
 
         /// 中央に出す人数表示の大きさ。
         var bannerSize: Double {
@@ -59,6 +74,8 @@ struct Surge: Equatable {
             case .moderate: 54
             case .strong: 68
             case .massive: 86
+            case .huge: 100
+            case .unreal: 116
             }
         }
 
@@ -67,6 +84,8 @@ struct Surge: Equatable {
             case .slight, .moderate: nil
             case .strong: "ごぼう抜き！"
             case .massive: "大成功！"
+            case .huge: "止まらない！"
+            case .unreal: "もう誰も追いつけない"
             }
         }
     }

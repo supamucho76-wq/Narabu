@@ -21,6 +21,9 @@ struct QueueView: View {
     @State private var activeMission: Mission?
     /// 前へ進んでいる最中の演出。終わるまで操作を受け付けない。
     @State private var surge: Surge?
+    /// 連続成功の段が上がった瞬間だけ出す。
+    @State private var tierUp: ComboTier?
+    @State private var tierUpToken = 0
     @State private var isShowingVoicePermission = false
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
@@ -50,6 +53,7 @@ struct QueueView: View {
             .allowsHitTesting(!isBusy)
             .animation(.easeInOut(duration: 0.2), value: isBusy)
 
+            tierUpBanner
             gainBannerView
 
             if let event = store.pendingEvent {
@@ -63,14 +67,17 @@ struct QueueView: View {
                 }
                 .transition(.opacity)
             } else if let mission = activeMission {
-                MissionView(mission: mission) { success in
+                MissionView(mission: mission, reward: store.projectedReward(for: mission)) { success in
                     // 成功でも失敗でも、必ず同じ後始末を通してから画面を閉じる。
                     let before = store.remaining
                     store.completeMission(mission, success: success)
                     activeMission = nil
                     sound.play(success ? .clear : .fail)
-                    if success {
-                        surgeForward(people: mission.reward, from: before)
+
+                    // 実際に減った人数で演出する。倍率がかかっていても必ず一致する。
+                    let skipped = before - store.remaining
+                    if skipped > 0 {
+                        surgeForward(people: skipped, from: before)
                     }
                 }
                 .transition(.opacity)
@@ -112,6 +119,14 @@ struct QueueView: View {
                 nextStage: store.stage,
                 onContinue: { clearResult = nil }
             )
+        }
+        .onChange(of: store.comboTier) { previous, current in
+            // 上がったときだけ知らせる。切れて下がったときは静かに戻す。
+            guard current > previous else {
+                withAnimation(.easeOut(duration: 0.2)) { tierUp = nil }
+                return
+            }
+            announce(current)
         }
         .task {
             store.startTicking()
@@ -345,16 +360,58 @@ struct QueueView: View {
 
     // MARK: - 3. コンボ
 
+    /// 段が上がった瞬間に、画面の真ん中で知らせる。
+    ///
+    /// ここが積み上げの見返りなので、静かに数字が変わるだけにはしない。
+    @ViewBuilder
+    private var tierUpBanner: some View {
+        if let tierUp, let label = tierUp.label {
+            VStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: 40, weight: .black, design: .rounded))
+                if let multiplier = tierUp.multiplierLabel {
+                    Text("\(multiplier) で進む")
+                        .font(.system(size: 16, weight: .black))
+                }
+            }
+            .foregroundStyle(tierUp.color)
+            .shadow(color: .black.opacity(0.5), radius: 8)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 14)
+            .background(.black.opacity(0.42))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .transition(.scale(scale: 0.5).combined(with: .opacity))
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// いま何倍で進めているか、次の段まであと何回か。
+    ///
+    /// 倍率が見えていないと、連続を積む理由が伝わらない。
     private var comboBadge: some View {
-        HStack(spacing: 5) {
-            Image(systemName: store.isFever ? "flame.fill" : "bolt.fill")
-            Text(store.isFever ? "フィーバー！ \(store.combo)連続" : "\(store.combo)連続")
+        let tier = store.comboTier
+
+        return HStack(spacing: 5) {
+            Image(systemName: tier.symbolName)
+            Text("\(store.combo)連続")
+            if let multiplier = tier.multiplierLabel {
+                Text(multiplier)
+                    .font(.system(size: 13, weight: .black))
+            }
+            if let label = tier.label {
+                Text(label)
+            }
+            if let remaining = store.comboToNextTier, remaining <= 2 {
+                Text("あと\(remaining)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
         }
         .font(.system(size: 11, weight: .black))
-        .foregroundStyle(store.isFever ? Color(red: 1.0, green: 0.78, blue: 0.24) : .white)
+        .foregroundStyle(tier == .none ? .white : tier.color)
         .padding(.horizontal, 10)
         .padding(.vertical, 3)
-        .background(.black.opacity(0.35))
+        .background(.black.opacity(0.45))
         .clipShape(Capsule())
         .transition(.scale.combined(with: .opacity))
         .animation(.snappy, value: store.combo)
@@ -407,8 +464,23 @@ struct QueueView: View {
                             .lineLimit(1)
                     }
                     Spacer()
-                    Text("+\(mission.reward)人")
-                        .font(.caption.weight(.black))
+                    // 連続を積むほどここの数が跳ね上がる。挑む理由になる。
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("+\(store.projectedReward(for: mission))人")
+                            .font(.caption.weight(.black))
+                            .contentTransition(.numericText())
+
+                        if let label = ComboTier.of(store.combo + 1).multiplierLabel {
+                            Text(label)
+                                .font(.system(size: 9, weight: .black))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(ComboTier.of(store.combo + 1).color)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .animation(.snappy, value: store.combo)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .bold))
                 }
@@ -579,6 +651,16 @@ struct QueueView: View {
         case .massive:
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             sound.play(.overtake)
+        case .huge, .unreal:
+            // 桁が変わったのが指でも分かるように、重い振動を畳みかける。
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            sound.play(.great)
+            Task {
+                for _ in 0..<3 {
+                    try? await Task.sleep(for: .seconds(0.11))
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                }
+            }
         }
 
         Task {
@@ -645,6 +727,21 @@ struct QueueView: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         sound.play(.clear)
         Task { await rescheduleNotifications() }
+    }
+
+    /// 段が上がったことを、音と振動と文字で一度に伝える。
+    private func announce(_ tier: ComboTier) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { tierUp = tier }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        sound.play(.great)
+
+        tierUpToken += 1
+        let token = tierUpToken
+        Task {
+            try? await Task.sleep(for: .seconds(1.1))
+            guard token == tierUpToken else { return }
+            withAnimation(.easeOut(duration: 0.25)) { tierUp = nil }
+        }
     }
 
     private func show(_ outcome: ActionOutcome) {
