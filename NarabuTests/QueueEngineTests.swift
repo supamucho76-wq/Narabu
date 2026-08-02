@@ -845,6 +845,12 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertFalse(Surge.Tier.slight.flashes)
         XCTAssertTrue(Surge.Tier.strong.showsSpeedLines)
         XCTAssertFalse(Surge.Tier.moderate.showsSpeedLines)
+
+        // 1人抜きと100人抜きで、周りの避けかたが違うこと。
+        for (weaker, stronger) in zip(tiers, tiers.dropFirst()) {
+            XCTAssertGreaterThan(stronger.dodgeStrength, weaker.dodgeStrength,
+                                 "\(stronger)で周りの避けかたが強くなっていない")
+        }
     }
 
     /// テンポを殺さないよう、演出は3秒以内で終わること。
@@ -855,6 +861,35 @@ final class QueueEngineTests: XCTestCase {
                 vehicle: nil, vehicleName: nil
             )
             XCTAssertLessThanOrEqual(surge.duration, 3.0, "\(people)人の演出が長すぎる")
+        }
+    }
+
+    // MARK: - クリア後のオチ
+
+    /// どのステージでも必ずオチがつくこと。
+    func testEveryStageHasAPunchline() {
+        for stage in StageCatalog.stages {
+            for seed in 0..<80 {
+                let punchline = PunchlineCatalog.punchline(for: stage, seed: seed)
+                XCTAssertFalse(punchline.headline.isEmpty, "\(stage.name)にオチがない")
+                XCTAssertFalse(punchline.detail.isEmpty)
+                XCTAssertFalse(punchline.symbolName.isEmpty)
+            }
+        }
+    }
+
+    /// 毎回同じオチにならないこと。
+    ///
+    /// 次のステージを見たくなるのは、何を言われるか分からないからなので、
+    /// 1種類しか出ないと2回目で効かなくなる。
+    func testPunchlinesVaryBetweenClears() {
+        for stage in StageCatalog.stages {
+            var seen: Set<String> = []
+            for seed in 0..<200 {
+                seen.insert(PunchlineCatalog.punchline(for: stage, seed: seed).headline)
+            }
+            XCTAssertGreaterThanOrEqual(seen.count, 5,
+                                        "\(stage.name)のオチが\(seen.count)種類しか出ない")
         }
     }
 

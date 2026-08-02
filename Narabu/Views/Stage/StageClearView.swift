@@ -15,10 +15,20 @@ struct StageClearView: View {
     private enum Phase {
         /// 着いた瞬間。
         case arriving
+        /// 着いた先で言われた一言。
+        case punchline
         /// 受け取ったものを見せる。
         case rewards
         /// 次はどこへ。
         case next
+    }
+
+    /// このクリアで出るオチ。同じクリアでは変わらない。
+    private var punchline: StagePunchline {
+        PunchlineCatalog.punchline(
+            for: result.stage,
+            seed: result.stage.id &* 977 &+ result.coins &+ result.gachaTickets
+        )
     }
 
     var body: some View {
@@ -30,6 +40,7 @@ struct StageClearView: View {
 
                 switch phase {
                 case .arriving: arrival
+                case .punchline: punchlineScene
                 case .rewards: rewards
                 case .next: nextPreview
                 }
@@ -44,6 +55,32 @@ struct StageClearView: View {
             // 着いた瞬間だけ、少し間を置いてから読ませる。
             withAnimation(.easeOut(duration: 0.5)) { phase = .arriving }
         }
+    }
+
+    // MARK: - オチ
+
+    /// たどり着いた先で言われる一言。
+    ///
+    /// **これだけ抜いてきた末に、ここで裏切る。**
+    /// 先頭に着いて終わるだけでは、次の行列に並ぶ理由が生まれない。
+    private var punchlineScene: some View {
+        VStack(spacing: 20) {
+            Image(systemName: punchline.symbolName)
+                .font(.system(size: 54))
+                .foregroundStyle(Color(red: 0.96, green: 0.52, blue: 0.42))
+
+            Text(punchline.headline)
+                .font(.system(size: 32, weight: .black))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+
+            Text(punchline.detail)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .transition(.scale(scale: 0.85).combined(with: .opacity))
     }
 
     private var background: some View {
@@ -199,6 +236,8 @@ struct StageClearView: View {
         Button {
             switch phase {
             case .arriving:
+                withAnimation(.easeInOut(duration: 0.35)) { phase = .punchline }
+            case .punchline:
                 withAnimation(.easeInOut(duration: 0.35)) { phase = .rewards }
             case .rewards:
                 withAnimation(.easeInOut(duration: 0.35)) { phase = .next }
@@ -218,7 +257,8 @@ struct StageClearView: View {
 
     private var buttonTitle: String {
         switch phase {
-        case .arriving: "受け取る"
+        case .arriving: "店に入る"
+        case .punchline: "……受け取る"
         case .rewards: "次はどこへ"
         case .next: "この行列に並ぶ"
         }

@@ -593,6 +593,13 @@ final class QueueStore {
         ensureMission()
     }
 
+    /// 列より多く抜いてしまったぶんなど、進みに変えられない報酬を受け取る。
+    func awardCoins(_ amount: Int) {
+        guard amount > 0 else { return }
+        state.coins += amount
+        save()
+    }
+
     /// 課金して前の人を追い抜く。
     func skipAhead(by people: Int) {
         record(skipped: people)

@@ -7,8 +7,10 @@ import UIKit
 /// 外れても腕で稼いだぶんは必ずもらえるので、待たされること自体は罰にならない。
 struct LotteryView: View {
     let lottery: Lottery
-    /// 上乗せ前の人数。画面に出して、上乗せ後との差を見せる。
+    /// 上乗せ前に抜いた人数。
     let basePeople: Int
+    /// 抽選を回す前の残り人数。抜いた人数と混ぜずに出すために持つ。
+    let remainingBefore: Int
     let onFinish: (Lottery.Result) -> Void
 
     @Environment(SoundPlayer.self) private var sound
@@ -155,31 +157,44 @@ struct LotteryView: View {
 
     // MARK: - 結果
 
+    /// 結果の見せかた。
+    ///
+    /// **「残り人数」と「抜いた人数」を同じ矢印に乗せない。**
+    /// 34人しか並んでいないのに102人抜きと出ると、読むほうが計算を始めてしまう。
+    /// 伝えたいのは計算ではなく「めちゃくちゃ抜いた」という一言。
     private var verdict: some View {
-        VStack(spacing: 8) {
+        let skipped = basePeople * lottery.result.multiplier
+        let actuallyUsed = min(skipped, remainingBefore)
+        let overflow = max(0, skipped - remainingBefore)
+
+        return VStack(spacing: 10) {
             Text(lottery.result.headline)
-                .font(.system(size: 32, weight: .black, design: .rounded))
+                .font(.system(size: 30, weight: .black, design: .rounded))
                 .foregroundStyle(lottery.result.color)
 
-            if lottery.result == .miss {
-                Text("\(basePeople)人 前へ")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.75))
-            } else {
-                HStack(spacing: 8) {
-                    Text("\(basePeople)")
-                        .strikethrough()
-                        .foregroundStyle(.white.opacity(0.45))
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 13, weight: .black))
-                        .foregroundStyle(.white.opacity(0.45))
-                    Text("\(basePeople * lottery.result.multiplier)人")
-                        .foregroundStyle(lottery.result.color)
+            // いちばん伝えたい一言。ここだけ大きい。
+            Text("\(skipped)人抜き！")
+                .font(.system(size: 40, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .shadow(color: lottery.result.color.opacity(0.8), radius: 12)
+
+            VStack(spacing: 3) {
+                // 列がどこまで減ったのかは、別の行で静かに出す。
+                Text("残り \(remainingBefore)人 → \(remainingBefore - actuallyUsed)人")
+                    .font(.system(size: 14, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.8))
+
+                if overflow > 0 {
+                    Text("余った\(overflow)人ぶんは \(overflow * Self.coinsPerOverflow)コインに！")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(red: 1.0, green: 0.86, blue: 0.42))
                 }
-                .font(.system(size: 22, weight: .black, design: .rounded))
             }
         }
     }
+
+    /// あふれた1人ぶんが何コインになるか。
+    static let coinsPerOverflow = 2
 
     // MARK: - 進行
 

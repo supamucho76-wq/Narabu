@@ -13,6 +13,8 @@ struct QueueView: View {
     @State private var isShowingCollection = false
     @State private var isShowingItems = false
     @State private var isShowingLoadout = false
+    /// 長押しで開く、5つの手の一覧。
+    @State private var isShowingAllActions = false
     @State private var reaction: ActionOutcome?
     @State private var reactionToken = 0
     @State private var disturbance: Double = 0
@@ -95,7 +97,11 @@ struct QueueView: View {
             }
 
             if let lottery, let pending = pendingSurge {
-                LotteryView(lottery: lottery, basePeople: pending.base) { result in
+                LotteryView(
+                    lottery: lottery,
+                    basePeople: pending.base,
+                    remainingBefore: pending.fromRemaining
+                ) { result in
                     finishLottery(result, pending: pending)
                 }
                 .transition(.opacity)
@@ -116,6 +122,10 @@ struct QueueView: View {
             if seen, store.needsStarterGacha { gachaMode = .starter }
         }
         .sheet(isPresented: $isShowingCollection) { CollectionView() }
+        .sheet(isPresented: $isShowingAllActions) {
+            allActionsSheet
+                .presentationDetents([.height(260)])
+        }
         .sheet(isPresented: $isShowingItems) {
             ItemSheet(
                 onUse: { item in use(item) },
@@ -184,6 +194,7 @@ struct QueueView: View {
                     .font(.caption2.weight(.bold))
                 Spacer()
                 gachaCorner
+                menuButton
             }
 
             remainingLine
@@ -531,75 +542,157 @@ struct QueueView: View {
 
     // MARK: - 5. アクション
 
+    /// いま前にいる人に対して、まず思いつく手。
+    ///
+    /// 5つ全部を常に並べると、初見でどれを押すゲームなのか分からなくなる。
+    /// **画面には1つだけ出し、相手が変われば入れ替わる。**
+    /// 他の手を選びたいときは、長押しで全部出す。
+    private var situationalAction: QueueAction {
+        switch store.personAhead.activity {
+        // 気づいていない相手には、まず触れる。
+        case .phone, .reading, .music: return .tapShoulder
+        // 手がふさがっている相手には、声をかける。
+        case .coffee, .shopping, .suitcase, .umbrella: return .talk
+        // 動きの止まっている相手は、驚かせるのが手っ取り早い。
+        case .sleeping, .standing: return .surprise
+        // 体を動かしている相手には、ノリで合わせる。
+        case .exercising, .stretching: return .highFive
+        case .walkingDog: return .cheer
+        }
+    }
+
+    /// 常時見えているのは、状況アクション・突破・アイテムの3つだけ。
     private var actionRow: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 8) {
+            situationalActionButton
+            itemButton
+        }
+    }
+
+    private var situationalActionButton: some View {
+        let action = situationalAction
+
+        return Button {
+            perform(action)
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: action.symbolName)
+                    .font(.system(size: 20, weight: .semibold))
+                Text(action.label)
+                    .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity, minHeight: 62)
+            .background(AppTheme.paper.opacity(0.96))
+            .foregroundStyle(AppTheme.ink)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(GameButtonStyle())
+        .disabled(store.hasClearedStage || isBusy)
+        // 他の手も使いたい人のために、長押しで5つ全部を出す。
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                guard !isBusy, !store.hasClearedStage else { return }
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                isShowingAllActions = true
+            }
+        )
+    }
+
+    private var itemButton: some View {
+        Button {
+            isShowingItems = true
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                Text(itemCount > 0 ? "アイテム \(itemCount)" : "アイテム")
+                    .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity, minHeight: 62)
+            .background(itemCount > 0
+                        ? Color(red: 0.98, green: 0.90, blue: 0.62)
+                        : AppTheme.paper.opacity(0.96))
+            .foregroundStyle(AppTheme.ink)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(GameButtonStyle())
+        .disabled(isBusy)
+    }
+
+    private var itemCount: Int {
+        store.ownedItems.reduce(0) { $0 + $1.count }
+    }
+
+    /// 長押しで開く、5つの手。普段は画面に出さない。
+    private var allActionsSheet: some View {
+        VStack(spacing: 12) {
+            Text("どう出るか選ぶ")
+                .font(.headline)
+                .foregroundStyle(AppTheme.ink)
+
             ForEach(QueueAction.allCases) { action in
                 Button {
+                    isShowingAllActions = false
                     perform(action)
                 } label: {
-                    VStack(spacing: 2) {
+                    HStack(spacing: 10) {
                         Image(systemName: action.symbolName)
-                            .font(.system(size: 13))
+                            .font(.system(size: 16))
+                            .frame(width: 26)
                         Text(action.label)
-                            .font(.system(size: 8, weight: .medium))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .font(.subheadline.weight(.bold))
+                        Spacer()
                     }
+                    .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
-                    .background(AppTheme.paper.opacity(0.94))
+                    .background(AppTheme.ink.opacity(0.06))
                     .foregroundStyle(AppTheme.ink)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(GameButtonStyle())
-                .disabled(store.hasClearedStage || isBusy)
             }
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.paper)
     }
 
     // MARK: - 6. その他
 
+    @ViewBuilder
     private var bottomBar: some View {
-        VStack(spacing: 6) {
-            if store.hasClearedStage {
-                Button("先頭に着いた！　クリア") { clearStage() }
-                    .buttonStyle(QuietButtonStyle(emphasized: true))
-            }
-
-            HStack(spacing: 6) {
-                Button {
-                    isShowingItems = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "shippingbox.fill")
-                        Text("アイテム")
-                        if store.ownedItems.isEmpty == false {
-                            countBadge(store.ownedItems.reduce(0) { $0 + $1.count })
-                        }
-                    }
-                }
-                .buttonStyle(QuietButtonStyle())
-
-                Button { isShowingLoadout = true } label: {
-                    Label("装備", systemImage: "person.crop.circle.badge.checkmark")
-                }
-                .buttonStyle(QuietButtonStyle())
-
-                Button("図鑑") { isShowingCollection = true }
-                    .buttonStyle(QuietButtonStyle())
-            }
+        if store.hasClearedStage {
+            Button("先頭に着いた！　クリア") { clearStage() }
+                .buttonStyle(QuietButtonStyle(emphasized: true))
+                .padding(.top, 10)
         }
-        // アクションボタンとの誤タップを防ぐ余白。
-        .padding(.top, 14)
     }
 
-    private func countBadge(_ count: Int) -> some View {
-        Text("\(count)")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(AppTheme.stamp)
-            .clipShape(Capsule())
+    /// 装備・図鑑は常時出さず、上のメニューにしまう。
+    private var menuButton: some View {
+        Menu {
+            Button {
+                isShowingLoadout = true
+            } label: {
+                Label("装備とスキル", systemImage: "person.crop.circle.badge.checkmark")
+            }
+            Button {
+                isShowingCollection = true
+            } label: {
+                Label("図鑑", systemImage: "book.closed")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(width: 40, height: 40)
+                .contentShape(Rectangle())
+        }
+        .disabled(isBusy)
     }
 
     // MARK: - 動作
@@ -765,9 +858,17 @@ struct QueueView: View {
         lottery = nil
         pendingSurge = nil
 
-        // 上乗せぶんをここで足す。抜けた人数は必ず画面に出した数と一致する。
+        // 上乗せぶんをここで足す。
         let extra = pending.base * (result.multiplier - 1)
         if extra > 0 { store.skipAhead(by: extra) }
+
+        // 列より多く抜いたぶんは消さずにコインへ回す。
+        // 「102人抜いたのに34人しか減らない」を、損に見せないための受け皿。
+        let claimed = pending.base * result.multiplier
+        let overflow = max(0, claimed - pending.fromRemaining)
+        if overflow > 0 {
+            store.awardCoins(overflow * LotteryView.coinsPerOverflow)
+        }
 
         let total = pending.fromRemaining - store.remaining
         if total > 0 {

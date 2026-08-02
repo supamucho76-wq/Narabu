@@ -17,9 +17,18 @@ struct QueueWorldView: View {
     let onTapPersonAhead: () -> Void
 
     /// 自分より後ろに見える人数。
-    private static let behindCount = 3
-    /// 自分より前に描く人数。これ以上奥は点になって見分けられない。
-    private static let aheadCount = 46
+    private static let behindCount = 2
+    /// 顔や持ち物まで描き込む、自分のすぐ前の人数。
+    ///
+    /// ここを増やすと画面が人で埋まって、誰と絡んでいるのか分からなくなる。
+    private static let detailedAheadCount = 4
+    /// 影として描く、その先の人数。
+    ///
+    /// 以前はここまで全員を半透明で描いていたため、薄い人影が何十枚も重なり、
+    /// 列ではなく残像や描画の乱れに見えていた。**影は不透明で描く。**
+    private static let silhouetteAheadCount = 22
+
+    private static var aheadCount: Int { detailedAheadCount + silhouetteAheadCount }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
@@ -252,18 +261,27 @@ struct QueueWorldView: View {
             return min(out, back) * size.width * 0.30 * run.tier.cameraPush
         } ?? 0
 
+        let isSurging = surge.map { !$0.isFinished(at: date) } ?? false
+        // 抜いている最中の激しさ。周りが避ける量はこれで決まる。
+        let rush = surge.map { run -> Double in
+            let t = run.progress(at: date)
+            return t < 1 ? sin(t * .pi) * run.tier.dodgeStrength : 0
+        } ?? 0
+
         // 奥の人から描いて、手前の人が重なるようにする。
         for slot in stride(from: Self.aheadCount, through: -Self.behindCount, by: -1) {
-            // 前進の直後だけ、列全体がわずかに手前へずれて追い越した感じが出る。
-            let shifted = Double(slot) + Double(Self.behindCount) - push * 0.6
+            // 前進の直後だけ、列全体が手前へずれて追い越した感じが出る。
+            let shifted = Double(slot) + Double(Self.behindCount) - push * 1.6
             let t = shifted / slotCount
-            let depth = pow(max(t, 0), 0.42)
-            let scale = pow(max(0, 1 - depth), 1.3)
-            guard scale > 0.001 else { continue }
+            // 並びの間隔を一定にしない。等間隔だと列というより目盛りに見える。
+            let gap = QueueEngine.unitRandom(remaining - slot, salt: 0x3D07) * 0.018 - 0.009
+            let depth = pow(max(t + gap, 0), 0.5)
+            let scale = pow(max(0, 1 - depth), 1.25)
+            guard scale > 0.004 else { continue }
 
             let feetY = baseY - (baseY - horizonY) * depth
             let height = size.height * 0.52 * scale
-            guard height > 3 else { continue }
+            guard height > 4 else { continue }
 
             let isPlayer = slot == 0
             let queueIndex = remaining - slot
@@ -275,13 +293,30 @@ struct QueueWorldView: View {
 
             // 列はまっすぐではなく、少しずつ左右にずれて厚みが出る。
             let lateral = person.lateralOffset * size.width * 0.16 * scale
+            // 抜かれる人は、真ん中から外へ弾かれるように避ける。
+            let side: Double = person.lateralOffset < 0 ? -1 : 1
+            let dodge = isPlayer ? 0 : side * size.width * 0.14 * rush * scale
+            // 大きく抜かれるほど、驚いて跳ねる。
+            let startle = isPlayer ? 0 : -abs(sin(time * 9 + Double(slot))) * height * 0.12 * rush
+
             let feet = CGPoint(
-                x: centerX + lateral + (isPlayer ? sidestep : 0),
-                y: feetY
+                x: centerX + lateral + dodge + (isPlayer ? sidestep : 0),
+                y: feetY + startle
             )
             let personHeight = height * person.heightScale
 
-            let isSurging = surge.map { !$0.isFinished(at: date) } ?? false
+            // 遠くの人は影で描く。**半透明にはしない。**
+            // 薄い人影を何十枚も重ねると、列ではなく描画の乱れに見える。
+            guard isPlayer || slot <= Self.detailedAheadCount else {
+                drawSilhouette(
+                    person,
+                    in: context,
+                    feet: feet,
+                    height: personHeight,
+                    depth: depth
+                )
+                continue
+            }
 
             if isPlayer, !isSurging {
                 drawPlayerRing(in: context, feet: feet, height: personHeight, time: time)
@@ -296,7 +331,7 @@ struct QueueWorldView: View {
                 feet: feet,
                 height: personHeight,
                 time: time + jolt * 6,
-                fade: fade(atDepth: depth)
+                fade: 1
             )
 
             if isPlayer, isSurging, let vehicle = surge?.vehicle {
@@ -315,6 +350,55 @@ struct QueueWorldView: View {
                 drawRemark(person.remark, in: context, feet: feet, height: personHeight, size: size)
             }
         }
+    }
+
+    /// 遠くに並んでいる人。**不透明の影**で描く。
+    ///
+    /// 顔も持ち物も見えない距離なので、輪郭だけで十分に人に見える。
+    /// 奥へ行くほど色を景色側へ寄せることで、透かさずに霞ませている。
+    private func drawSilhouette(
+        _ person: QueuePerson,
+        in context: GraphicsContext,
+        feet: CGPoint,
+        height: Double,
+        depth: Double
+    ) {
+        let color = silhouetteColor(atDepth: depth)
+        let bodyWidth = height * 0.34
+        let headSize = height * 0.24
+
+        // 胴
+        context.fill(
+            Path(roundedRect: CGRect(
+                x: feet.x - bodyWidth / 2,
+                y: feet.y - height * 0.76,
+                width: bodyWidth,
+                height: height * 0.76
+            ), cornerRadius: bodyWidth * 0.32),
+            with: .color(color)
+        )
+        // 頭
+        context.fill(
+            Path(ellipseIn: CGRect(
+                x: feet.x - headSize / 2,
+                y: feet.y - height,
+                width: headSize,
+                height: headSize
+            )),
+            with: .color(color)
+        )
+    }
+
+    /// 影の色。奥ほど霞んだ明るい色に寄る。
+    ///
+    /// 透明度ではなく色で遠さを出すので、何人重なっても濁らない。
+    private func silhouetteColor(atDepth depth: Double) -> Color {
+        let t = min(1, max(0, (depth - 0.3) / 0.7))
+        return Color(
+            red: 0.26 + (0.74 - 0.26) * t,
+            green: 0.28 + (0.78 - 0.28) * t,
+            blue: 0.34 + (0.84 - 0.34) * t
+        )
     }
 
     // MARK: - 前進の演出
@@ -368,11 +452,6 @@ struct QueueWorldView: View {
                 with: .color(.white.opacity(0.5 * intensity))
             )
         }
-    }
-
-    /// 奥ほど景色に溶けていく。
-    private func fade(atDepth depth: Double) -> Double {
-        max(0.18, 1 - depth * 0.7)
     }
 
     // MARK: - 自分

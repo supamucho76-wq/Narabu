@@ -51,6 +51,21 @@ struct Surge: Equatable {
             }
         }
 
+        /// 周りの人が左右へ避ける強さ。
+        ///
+        /// **数字が減るだけでは抜いた気がしない。** 1人抜くのと100人抜くのでは、
+        /// 周りの人の反応そのものが違って見える必要がある。
+        var dodgeStrength: Double {
+            switch self {
+            case .slight: 0.18      // 軽く身を引く
+            case .moderate: 0.45    // はっきりよける
+            case .strong: 0.8       // 押しのけられる
+            case .massive: 1.2      // 弾き飛ばされる
+            case .huge: 1.7
+            case .unreal: 2.2       // 左右へ吹き飛ぶ
+            }
+        }
+
         /// 速度線を出すか。
         var showsSpeedLines: Bool {
             switch self {
