@@ -6,17 +6,21 @@ import Foundation
 /// 「切れたので何分待つ」という作りには絶対にしない。
 enum FocusGauge {
     static let maximum: Double = 100
-    /// 1秒あたりの自然回復。0からでも1分かからずに戻る。
-    static let regenPerSecond: Double = 2.2
+    /// 1秒あたりの自然回復。0からでも30秒かからずに満タンに戻る。
+    static let regenPerSecond: Double = 4.0
 
     /// アクション1回の消費。強い手ほど気を使う。
+    ///
+    /// **押し続けられることを優先している。** 数回で切れてしまうと、
+    /// 連続を積み上げる前に手が止まり、気持ちよさが立ち上がらない。
+    /// いまは満タンから15回以上は連打できる。
     static func cost(for action: QueueAction) -> Double {
         switch action {
-        case .tapShoulder: 7
-        case .talk: 10
-        case .surprise: 15
-        case .cheer: 8
-        case .highFive: 12
+        case .tapShoulder: 4
+        case .talk: 5
+        case .surprise: 8
+        case .cheer: 4
+        case .highFive: 6
         }
     }
 

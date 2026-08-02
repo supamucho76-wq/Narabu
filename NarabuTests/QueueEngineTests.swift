@@ -143,41 +143,64 @@ final class QueueEngineTests: XCTestCase {
 
     // MARK: - アクション
 
-    /// 相手に合った手を選べば進み、間違えれば下がる。当てずっぽうでは進めない。
-    func testActionResultDependsOnThePersonAhead() {
-        let sleepy = PersonFactory.person(atQueueIndex: 7, scene: .shopping)
-        let personality = sleepy.personality
+    /// **どの手を押しても必ず前に進むこと。**
+    ///
+    /// 押すたびに後退する作りだと、連続が積み上がる前に折れてしまい、
+    /// 気持ちよさが立ち上がらない。相性は進む量に出す。
+    func testEveryActionAlwaysMovesYouForward() {
+        for index in 0..<120 {
+            let person = PersonFactory.person(atQueueIndex: index, scene: .shopping)
 
-        let best = QueueActions.outcome(
-            action: personality.best,
-            person: sleepy,
-            repeatCount: 0,
-            seed: 1
-        )
-        XCTAssertGreaterThan(best.advance, 0, "最適な手なのに進めない")
-
-        let worst = QueueActions.outcome(
-            action: personality.worst,
-            person: sleepy,
-            repeatCount: 0,
-            seed: 1
-        )
-        XCTAssertLessThan(worst.advance, 0, "やってはいけない手なのに罰がない")
+            for action in QueueAction.allCases {
+                let outcome = QueueActions.outcome(
+                    action: action, person: person, repeatCount: 0, seed: index
+                )
+                XCTAssertGreaterThan(outcome.advance, 0,
+                                     "\(action.label)で進めない相手がいる")
+                XCTAssertTrue(outcome.keepsCombo, "アクションで連続が切れている")
+            }
+        }
     }
 
-    /// 同じボタンを連打するだけで最適解にならないこと。
-    func testRepeatingTheSameActionStopsWorking() {
+    /// 相手に合った手ほど大きく進むこと。読む甲斐があること。
+    func testReadingThePersonPaysOff() {
+        let person = PersonFactory.person(atQueueIndex: 7, scene: .shopping)
+        let personality = person.personality
+
+        func advance(_ action: QueueAction) -> Int {
+            QueueActions.outcome(action: action, person: person, repeatCount: 0, seed: 1).advance
+        }
+
+        XCTAssertGreaterThan(advance(personality.best), advance(personality.worst),
+                             "最適な手が地雷より伸びていない")
+    }
+
+    /// 合わない手の代償が、後退ではなく周りの警戒であること。
+    func testTheWrongActionCostsAlertnessInsteadOfProgress() {
+        for index in 0..<60 {
+            let person = PersonFactory.person(atQueueIndex: index, scene: .venue)
+            let worst = QueueActions.outcome(
+                action: person.personality.worst, person: person, repeatCount: 0, seed: index
+            )
+
+            XCTAssertGreaterThan(worst.advance, 0, "地雷を踏んで後退している")
+            XCTAssertGreaterThan(worst.alertDelta, 0, "地雷を踏んでも代償がない")
+        }
+    }
+
+    /// 同じボタンを連打するだけでは伸びなくなること。
+    func testRepeatingTheSameActionStopsPayingWell() {
         let person = PersonFactory.person(atQueueIndex: 12, scene: .forest)
         let action = person.personality.best
 
-        let fresh = (0..<200).filter { seed in
-            QueueActions.outcome(action: action, person: person, repeatCount: 0, seed: seed).advance > 0
-        }.count
-        let tired = (0..<200).filter { seed in
-            QueueActions.outcome(action: action, person: person, repeatCount: 4, seed: seed).advance > 0
-        }.count
+        let fresh = (0..<200).reduce(0) { total, seed in
+            total + QueueActions.outcome(action: action, person: person, repeatCount: 0, seed: seed).advance
+        }
+        let tired = (0..<200).reduce(0) { total, seed in
+            total + QueueActions.outcome(action: action, person: person, repeatCount: 4, seed: seed).advance
+        }
 
-        XCTAssertGreaterThan(fresh, tired, "連打しても成功率が落ちていない")
+        XCTAssertGreaterThan(fresh, tired, "連打しても進みが落ちていない")
     }
 
     func testEveryPersonalityHasADistinctBestAndWorstAction() {
@@ -466,6 +489,20 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertEqual(refilled, FocusGauge.maximum, accuracy: 0.001)
     }
 
+    /// 満タンから続けて15回は押せること。
+    ///
+    /// 数回で切れると、連続が積み上がる前に手が止まってしまう。
+    func testFocusAllowsALongEnoughRun() {
+        let heaviest = QueueAction.allCases.map(FocusGauge.cost(for:)).max() ?? 0
+        XCTAssertGreaterThanOrEqual(FocusGauge.maximum / heaviest, 12,
+                                    "一番重い手でも12回は続けて押せてほしい")
+
+        let average = QueueAction.allCases.map(FocusGauge.cost(for:)).reduce(0, +)
+            / Double(QueueAction.allCases.count)
+        XCTAssertGreaterThanOrEqual(FocusGauge.maximum / average, 15,
+                                    "満タンから15回も押せない")
+    }
+
     func testFocusStaysWithinBounds() {
         for seconds in stride(from: 0.0, through: 300, by: 11) {
             let value = FocusGauge.current(anchor: 30, anchorDate: noon, now: noon.addingTimeInterval(seconds))
@@ -476,8 +513,8 @@ final class QueueEngineTests: XCTestCase {
 
     func testEveryActionCostsSomeFocus() {
         for action in QueueAction.allCases {
-            XCTAssertGreaterThanOrEqual(FocusGauge.cost(for: action), 5)
-            XCTAssertLessThanOrEqual(FocusGauge.cost(for: action), 15)
+            XCTAssertGreaterThan(FocusGauge.cost(for: action), 0)
+            XCTAssertLessThanOrEqual(FocusGauge.cost(for: action), 8)
         }
     }
 

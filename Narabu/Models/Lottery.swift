@@ -26,14 +26,14 @@ struct Lottery: Equatable, Sendable {
 
         /// 出る割合。合計で1.0。
         ///
-        /// 当たりすぎると上乗せの意味がなくなり、
-        /// 煽りが頻繁すぎるとテンポが死ぬ。この数字はその両方の折り合い。
+        /// **当たらない抽選は、ただの待ち時間になる。**
+        /// ほぼ半分は上乗せがつくようにして、回すこと自体を楽しくしている。
         var rate: Double {
             switch self {
-            case .miss: 0.80
-            case .hit: 0.13
-            case .big: 0.05
-            case .jackpot: 0.02
+            case .miss: 0.55
+            case .hit: 0.27
+            case .big: 0.13
+            case .jackpot: 0.05
             }
         }
 
@@ -82,8 +82,11 @@ struct Lottery: Equatable, Sendable {
     /// 煽られてから外れる回数のほうが多いからこそ、そろった瞬間に意味が出る。
     let teases: Bool
 
-    /// 揃うところまで見せるか。外れのガセでも、2つまでは揃える。
-    var showsReach: Bool { result != .miss || teases }
+    /// 引っぱって見せるか。
+    ///
+    /// ×2 は数が多いので引っぱらない。毎回2秒待たされたら、当たりが煩わしくなる。
+    /// **軽い当たりはさっと通し、重い当たりとガセだけを引っぱる。**
+    var showsReach: Bool { result == .big || result == .jackpot || teases }
 
     /// 回した結果を決める。
     ///
@@ -100,9 +103,9 @@ struct Lottery: Equatable, Sendable {
             roll -= candidate.rate
         }
 
-        // 外れの5回に1回くらいは、当たったふりをして引っぱる。
-        // 煽られた回の半分近くが外れになる割合にしてある。
-        let teases = result == .miss && QueueEngine.unitRandom(seed, salt: 0xBEEF) < 0.22
+        // 外れの4割は、当たったふりをして引っぱる。
+        // 引っぱられた回の半分以上が外れになる割合にしてある。
+        let teases = result == .miss && QueueEngine.unitRandom(seed, salt: 0xBEEF) < 0.40
         return Lottery(result: result, teases: teases)
     }
 }

@@ -622,10 +622,11 @@ struct QueueView: View {
         switch outcome.grade {
         case .great:
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-            sound.play(.great)
+            // 連続しているぶんだけ音が上がっていく。押し続けたくなるのはこの音のおかげ。
+            sound.playStep(store.combo)
         case .good:
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            sound.play(.success)
+            sound.playStep(store.combo)
         case .miss:
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
             sound.play(.tap)

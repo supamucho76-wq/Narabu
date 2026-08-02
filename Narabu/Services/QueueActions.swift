@@ -48,8 +48,15 @@ struct ActionOutcome: Equatable {
     let message: String
     /// 進む人数。後退するときは負になる。
     let advance: Int
+    /// 周りの警戒の増減。合わない手を使うと上がる。
+    var alertDelta: Double = 0
+
     /// この行動でコンボが続いたか。
-    var keepsCombo: Bool { grade == .great || grade == .good }
+    ///
+    /// **アクションでは切れない。** 手が合わなくても前には進むので、
+    /// 積み上げが指の運で吹き飛ぶことはない。
+    /// 連続が切れるのは、ミッションを落としたときと警備員に捕まったときだけ。
+    var keepsCombo: Bool { grade != .backfire }
 }
 
 /// 前の人の反応。
@@ -62,6 +69,15 @@ enum QueueActions {
     ///   - repeatCount: 直前に同じアクションを何回続けたか。
     ///   - successBonus: 装備やスキルで上がる成功率。
     ///   - comboBonus: コンボによる追加の前進。
+    /// **どの手を選んでも必ず前に進む。**
+    ///
+    /// 以前は相性の悪い手が後退と連続切れを起こしていた。
+    /// 相手の性格は画面に出していないので、それはただの当たり外れでしかなく、
+    /// 押すたびに積み上げが吹き飛んで、気持ちよさが立ち上がる前に折れていた。
+    ///
+    /// いまは合っているかどうかで**進む量**が変わる。
+    /// 合わない手の代償は後退ではなく、周りの警戒が上がること。
+    /// 警戒を振り切れば警備員に連れ戻され、そこで初めて連続が切れる。
     static func outcome(
         action: QueueAction,
         person: QueuePerson,
@@ -72,46 +88,38 @@ enum QueueActions {
     ) -> ActionOutcome {
         let personality = person.personality
         let roll = QueueEngine.unitRandom(seed, salt: 0x51A7)
+        // 同じ手を続けると通じにくくなる。止まりはしないが、伸びなくなる。
         let fatigue = min(0.7, Double(repeatCount) * repeatPenalty)
+        let bonus = comboBonus + Int((successBonus * 4).rounded())
 
-        // やってはいけない相手にやると、確実に裏目に出る。
         if action == personality.worst {
+            // 明らかに嫌がられた。それでも列は詰められる。
             return ActionOutcome(
-                grade: .backfire,
+                grade: .good,
                 message: personality.failureMessage(for: action),
-                advance: -1
+                advance: max(1, 1 + bonus),
+                alertDelta: 0.14
             )
         }
 
         if action == personality.best {
-            let chance = 0.92 + successBonus - fatigue
-            if roll < chance {
-                return ActionOutcome(
-                    grade: .great,
-                    message: personality.successMessage(for: action),
-                    advance: 2 + comboBonus + (roll < chance * 0.4 ? 1 : 0)
-                )
-            }
+            // ここが一番大きい。読み切れば伸びる。
+            let extra = roll < 0.5 - fatigue * 0.4 ? 2 : 0
             return ActionOutcome(
-                grade: .miss,
-                message: "同じ手ばかりで、飽きられてしまった。",
-                advance: 0
+                grade: .great,
+                message: personality.successMessage(for: action),
+                advance: max(1, 4 + bonus + extra - Int(fatigue * 3)),
+                alertDelta: -0.04
             )
         }
 
-        // 相性が良くも悪くもない相手。半々で少し進む。
-        let chance = 0.45 + successBonus - fatigue
-        if roll < chance {
-            return ActionOutcome(
-                grade: .good,
-                message: "軽く応じてくれた。少しだけ前に詰めた。",
-                advance: 1 + comboBonus
-            )
-        }
+        // 良くも悪くもない相手。それでも確実に詰められる。
+        let extra = roll < 0.4 - fatigue * 0.4 ? 1 : 0
         return ActionOutcome(
-            grade: .miss,
-            message: personality.failureMessage(for: action),
-            advance: 0
+            grade: .good,
+            message: "軽く応じてくれた。前に詰めた。",
+            advance: max(1, 2 + bonus + extra - Int(fatigue * 2)),
+            alertDelta: 0.02
         )
     }
 }

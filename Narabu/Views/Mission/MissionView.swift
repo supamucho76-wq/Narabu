@@ -137,8 +137,9 @@ struct MissionView: View {
         verdict = success
 
         // 少し見せてから自動で戻る。届かなくてもボタンで戻れる。
+        // このあと抽選と前進の演出が続くので、ここは短く切り上げる。
         Task {
-            try? await Task.sleep(for: .seconds(1.4))
+            try? await Task.sleep(for: .seconds(success ? 0.8 : 1.2))
             close(success: success)
         }
     }

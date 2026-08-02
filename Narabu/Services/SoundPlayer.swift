@@ -30,8 +30,18 @@ final class SoundPlayer {
 
     private var effects: [SoundEffect: AVAudioPCMBuffer] = [:]
     private var musicBuffers: [SceneMood: AVAudioPCMBuffer] = [:]
+    /// 連続成功で1段ずつ上がっていく音。あらかじめ全部の高さを焼いておく。
+    private var steps: [AVAudioPCMBuffer?] = []
     private var currentMood: SceneMood?
     private var isRunning = false
+
+    /// 上がっていく音の並び。長調の音階なので、続けて鳴らすと駆け上がって聞こえる。
+    /// 最後は2オクターブ上まで行き、そこで頭打ちにする。
+    private static let stepScale: [Int] = [
+        0, 2, 4, 5, 7, 9, 11, 12,
+        14, 16, 17, 19, 21, 23, 24, 26,
+        28, 29, 31, 33, 35, 36
+    ]
 
     /// 効果音を鳴らすか。
     var isEffectEnabled = true {
@@ -87,12 +97,25 @@ final class SoundPlayer {
         for effect in SoundEffect.allCases {
             effects[effect] = Self.buffer(for: effect)
         }
+        steps = Self.stepScale.map { Self.stepBuffer(semitonesFromA4: $0) }
     }
 
     // MARK: - 効果音
 
     func play(_ effect: SoundEffect) {
         guard isRunning, isEffectEnabled, let buffer = effects[effect] else { return }
+        effectNode.scheduleBuffer(buffer, at: nil, options: .interrupts)
+    }
+
+    /// 連続で成功しているあいだ、音程を1段ずつ上げて鳴らす。
+    ///
+    /// **同じ音が続くと、何回押しても同じことをしている感じになる。**
+    /// 一段ずつ上がっていくと、押すたびに積み上がっている音になり、
+    /// 途切れさせたくなくなる。気持ちよさのいちばん安い作りかた。
+    func playStep(_ step: Int) {
+        guard isRunning, isEffectEnabled, !steps.isEmpty else { return }
+        let buffer = steps[min(max(0, step), steps.count - 1)]
+        guard let buffer else { return }
         effectNode.scheduleBuffer(buffer, at: nil, options: .interrupts)
     }
 
@@ -156,6 +179,20 @@ final class SoundPlayer {
     }
 
     // MARK: - 音作り
+
+    /// 連続成功の一打ち。短く、粒立ちよく。
+    private static func stepBuffer(semitonesFromA4: Int) -> AVAudioPCMBuffer? {
+        ToneSynth.render(
+            notes: [
+                .init(frequency: ToneSynth.pitch(semitonesFromA4: semitonesFromA4), start: 0,
+                      duration: 0.09, volume: 0.5, timbre: .triangle),
+                // オクターブ上を薄く重ねると、粒が立って抜けがよくなる。
+                .init(frequency: ToneSynth.pitch(semitonesFromA4: semitonesFromA4 + 12), start: 0,
+                      duration: 0.07, volume: 0.18, timbre: .sine)
+            ],
+            duration: 0.13
+        )
+    }
 
     private static func buffer(for effect: SoundEffect) -> AVAudioPCMBuffer? {
         switch effect {

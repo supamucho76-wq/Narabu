@@ -394,7 +394,8 @@ final class QueueStore {
             outcome = ActionOutcome(
                 grade: outcome.grade,
                 message: outcome.message,
-                advance: boosted(outcome.advance)
+                advance: boosted(outcome.advance),
+                alertDelta: outcome.alertDelta
             )
         }
 
@@ -404,8 +405,10 @@ final class QueueStore {
         if outcome.grade == .great {
             state.coins += 3
         }
+        // 合わない手を使うと周りの目が厳しくなる。前進の代わりに払う代償はこちら。
+        changeAlert(by: outcome.alertDelta * 100)
         // 丁寧なやりとりが続くと、周りの警戒がほぐれる。
-        if outcome.keepsCombo, action == .cheer || action == .highFive || action == .talk {
+        if outcome.grade == .great, action == .cheer || action == .highFive || action == .talk {
             changeAlert(by: -5)
         }
         triggerEventIfNeeded()
