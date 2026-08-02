@@ -505,13 +505,26 @@ final class QueueStore {
     /// いま挑戦できるミッション。常にひとつある。
     private(set) var currentMission: Mission?
 
+    /// 直前に出した遊びかた。同じものが続くと飽きるので覚えておく。
+    ///
+    /// 保存はしない。アプリを開き直した直後に一度だけ重なる可能性はあるが、
+    /// そのために保存の形を増やすほどの問題ではない。
+    private var recentFamilies: [MissionFamily] = []
+
     /// 手持ちのミッションがなければ用意する。
     func ensureMission() {
         guard currentMission == nil else { return }
-        currentMission = MissionFactory.make(
+        let mission = MissionFactory.make(
             seed: state.totalInteractions &* 7 &+ state.stageNumber &* 101 &+ Int(now.timeIntervalSince1970) / 17,
-            stage: stage
+            stage: stage,
+            recent: recentFamilies
         )
+        currentMission = mission
+
+        recentFamilies.append(mission.family)
+        if recentFamilies.count > MissionFactory.historyDepth {
+            recentFamilies.removeFirst(recentFamilies.count - MissionFactory.historyDepth)
+        }
     }
 
     /// ミッションの結果を反映して、次のミッションを用意する。

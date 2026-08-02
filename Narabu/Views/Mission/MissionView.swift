@@ -75,6 +75,16 @@ struct MissionView: View {
             HideGame(seconds: seconds, onFinish: finish)
         case .align(let tolerance):
             AlignGame(tolerance: tolerance, onFinish: finish)
+        case .hold(let target, let tolerance):
+            HoldGame(target: target, tolerance: tolerance, onFinish: finish)
+        case .pluck(let count, let seconds):
+            PluckGame(count: count, seconds: seconds, onFinish: finish)
+        case .weave(let count, let seconds):
+            WeaveGame(count: count, seconds: seconds, onFinish: finish)
+        case .trace(let seconds, let width):
+            TraceGame(seconds: seconds, width: width, onFinish: finish)
+        case .balance(let seconds, let drift):
+            BalanceGame(seconds: seconds, drift: drift, onFinish: finish)
         }
     }
 

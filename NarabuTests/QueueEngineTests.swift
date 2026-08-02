@@ -214,26 +214,71 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
-    /// 遊びの型が8つそろっていて、どれも実際に出てくること。
+    /// 用意した遊びかたが全部そろっていて、どれも実際に出てくること。
     ///
     /// 数分で「またこれか」にならないための下限。
-    func testAllEightMissionKindsAppear() {
-        var seen: Set<String> = []
+    func testEveryMissionFamilyAppears() {
+        var seen: Set<MissionFamily> = []
 
         for stage in StageCatalog.stages {
             for seed in 0..<400 {
-                seen.insert(name(of: MissionFactory.make(seed: seed, stage: stage).kind))
+                seen.insert(MissionFactory.make(seed: seed, stage: stage).family)
             }
         }
 
-        XCTAssertEqual(seen.count, 8, "出てこない遊びかたがある：\(seen.sorted())")
+        XCTAssertEqual(seen.count, MissionFamily.allCases.count,
+                       "出てこない遊びかたがある：\(MissionFamily.allCases.filter { !seen.contains($0) })")
+        XCTAssertGreaterThanOrEqual(MissionFamily.allCases.count, 13, "遊びかたの種類が減っている")
+    }
+
+    /// 同じ遊びが続けて出ないこと。
+    ///
+    /// 「詰めるタイミングが5回続く」のが一番飽きる形なので、
+    /// 直前に出たものは候補から外している。
+    func testSameMissionNeverRepeatsBackToBack() {
+        for stage in StageCatalog.stages {
+            var recent: [MissionFamily] = []
+            var previous: MissionFamily?
+
+            for seed in 0..<500 {
+                let mission = MissionFactory.make(seed: seed, stage: stage, recent: recent)
+                XCTAssertNotEqual(mission.family, previous,
+                                  "\(stage.name)で同じ遊びが続けて出た：\(mission.family)")
+
+                previous = mission.family
+                recent.append(mission.family)
+                if recent.count > MissionFactory.historyDepth {
+                    recent.removeFirst(recent.count - MissionFactory.historyDepth)
+                }
+            }
+        }
+    }
+
+    /// 2種類が交互に続くのも防げていること。
+    func testMissionsDoNotAlternateBetweenTwoKinds() {
+        var recent: [MissionFamily] = []
+        var history: [MissionFamily] = []
+
+        for seed in 0..<300 {
+            let mission = MissionFactory.make(seed: seed, stage: StageCatalog.stages[0], recent: recent)
+            history.append(mission.family)
+            recent.append(mission.family)
+            if recent.count > MissionFactory.historyDepth {
+                recent.removeFirst(recent.count - MissionFactory.historyDepth)
+            }
+        }
+
+        for index in 2..<history.count {
+            XCTAssertNotEqual(history[index], history[index - 2],
+                              "1つ飛ばしで同じ遊びが戻ってきている")
+        }
     }
 
     /// その場所らしい遊びが多く出ること。
     func testStagesFavourTheirOwnKindOfMission() {
-        func share(of kind: String, on stage: Stage) -> Double {
+        func share(of family: MissionFamily, on stage: Stage) -> Double {
             let hits = (0..<800).filter {
-                name(of: MissionFactory.make(seed: $0, stage: stage).kind) == kind
+                MissionFactory.make(seed: $0, stage: stage).family == family
             }.count
             return Double(hits) / 800
         }
@@ -241,10 +286,12 @@ final class QueueEngineTests: XCTestCase {
         let venue = StageCatalog.stages[4]
         let convenience = StageCatalog.stages[0]
 
-        XCTAssertGreaterThan(share(of: "hide", on: venue), share(of: "hide", on: convenience),
+        XCTAssertGreaterThan(share(of: .hide, on: venue), share(of: .hide, on: convenience),
                              "係員の厳しい場所で、やり過ごしが増えていない")
-        XCTAssertGreaterThan(share(of: "align", on: venue), share(of: "align", on: convenience),
+        XCTAssertGreaterThan(share(of: .align, on: venue), share(of: .align, on: convenience),
                              "整理券が要る場所で、整理券の出番が増えていない")
+        XCTAssertGreaterThan(share(of: .weave, on: venue), share(of: .weave, on: convenience),
+                             "人が詰まっている場所で、すり抜けが増えていない")
     }
 
     /// 進むほど難しくなるが、手が届かない設定にはしないこと。
@@ -267,6 +314,21 @@ final class QueueEngineTests: XCTestCase {
                 case .dodge(let seconds), .escalator(let seconds), .hide(let seconds):
                     XCTAssertGreaterThan(seconds, 3)
                     XCTAssertLessThanOrEqual(seconds, 12, "1回が長すぎてテンポが死ぬ")
+                case .hold(let target, let tolerance):
+                    XCTAssertGreaterThanOrEqual(tolerance, 0.06)
+                    // 帯が端からはみ出すと、狙いようがなくなる。
+                    XCTAssertLessThanOrEqual(target + tolerance, 1.0, "\(stage.name)の帯が端を越えている")
+                    XCTAssertGreaterThanOrEqual(target - tolerance, 0.0)
+                case .pluck(let count, let seconds):
+                    XCTAssertLessThanOrEqual(Double(count) / seconds, 1.4, "拾うのが忙しすぎる")
+                case .weave(let count, let seconds):
+                    XCTAssertLessThanOrEqual(Double(count) / seconds, 2.4, "交互タップが速すぎる")
+                case .trace(let seconds, let width):
+                    XCTAssertGreaterThan(seconds, 3)
+                    XCTAssertGreaterThanOrEqual(width, 0.12, "\(stage.name)の道が細すぎる")
+                case .balance(let seconds, let drift):
+                    XCTAssertGreaterThan(seconds, 3)
+                    XCTAssertLessThanOrEqual(drift, 1.3, "傾きが速すぎて立て直せない")
                 }
             }
         }
@@ -280,19 +342,6 @@ final class QueueEngineTests: XCTestCase {
                 XCTAssertFalse(mission.title.isEmpty)
                 XCTAssertFalse(mission.instruction.isEmpty)
             }
-        }
-    }
-
-    private func name(of kind: Mission.Kind) -> String {
-        switch kind {
-        case .timing: "timing"
-        case .mash: "mash"
-        case .swipe: "swipe"
-        case .jump: "jump"
-        case .dodge: "dodge"
-        case .escalator: "escalator"
-        case .hide: "hide"
-        case .align: "align"
         }
     }
 

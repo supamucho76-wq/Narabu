@@ -3,11 +3,16 @@ import UIKit
 
 /// 整理券を係員に見せる。
 ///
-/// 揺れている読み取り枠に整理券を合わせて、重なったところで見せる。
+/// 揺れている読み取り枠に整理券を差し込む。
+/// 枠と整理券は同じ高さに並べてあるので、**重なれば整理券が枠の中に収まる**。
 struct AlignGame: View {
     /// 合っていると見なす近さ。小さいほど難しい。
     let tolerance: Double
     let onFinish: (Bool) -> Void
+
+    /// 整理券の大きさ。枠は必ずこれより大きく作る。
+    private static let ticketWidth: Double = 58
+    private static let ticketHeight: Double = 66
 
     @State private var ticketX: Double = 0.5
     @State private var startedAt = Date()
@@ -19,18 +24,25 @@ struct AlignGame: View {
                 GeometryReader { geometry in
                     TimelineView(.animation) { timeline in
                         let target = framePosition(at: timeline.date)
+                        let matched = abs(target - ticketX) <= tolerance
+                        // 枠は整理券より必ず一回り大きく、判定の幅にも合わせる。
+                        let frameWidth = max(
+                            Self.ticketWidth + 20,
+                            geometry.size.width * tolerance * 2
+                        )
+                        let centerY = geometry.size.height * 0.5
 
-                        ZStack(alignment: .topLeading) {
-                            // 読み取り枠
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(AppTheme.stamp, lineWidth: 3)
-                                .frame(width: geometry.size.width * tolerance * 2.2, height: 76)
-                                .position(
-                                    x: geometry.size.width * target,
-                                    y: geometry.size.height * 0.32
+                        ZStack {
+                            // 読み取り枠。整理券と同じ高さを左右に揺れる。
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(
+                                    matched ? Color(red: 0.30, green: 0.68, blue: 0.44) : AppTheme.stamp,
+                                    lineWidth: matched ? 5 : 3
                                 )
+                                .frame(width: frameWidth, height: Self.ticketHeight + 22)
+                                .position(x: geometry.size.width * target, y: centerY)
 
-                            // 整理券
+                            // 整理券。指で左右に動かす。
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(AppTheme.paper)
                                 .overlay {
@@ -38,12 +50,18 @@ struct AlignGame: View {
                                         .font(.system(size: 26))
                                         .foregroundStyle(AppTheme.ink)
                                 }
-                                .frame(width: 58, height: 66)
-                                .position(
-                                    x: geometry.size.width * ticketX,
-                                    y: geometry.size.height * 0.72
-                                )
+                                .frame(width: Self.ticketWidth, height: Self.ticketHeight)
+                                .position(x: geometry.size.width * ticketX, y: centerY)
                                 .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+
+                            // 合っている瞬間が分かるようにしておく。
+                            Text(matched ? "いま！" : "枠に入れる")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(matched
+                                                 ? Color(red: 0.24, green: 0.58, blue: 0.38)
+                                                 : AppTheme.inkSecondary)
+                                .position(x: geometry.size.width * 0.5,
+                                          y: geometry.size.height * 0.88)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
