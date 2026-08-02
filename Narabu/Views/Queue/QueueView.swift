@@ -24,11 +24,22 @@ struct QueueView: View {
     /// 連続成功の段が上がった瞬間だけ出す。
     @State private var tierUp: ComboTier?
     @State private var tierUpToken = 0
+    /// ミッションに成功したあとの抽選。決まってから走り出す。
+    @State private var lottery: Lottery?
+    @State private var pendingSurge: PendingSurge?
+
+    /// 抽選を待っている前進。上乗せが決まってから、まとめて演出する。
+    private struct PendingSurge {
+        /// 走り出す前の残り人数。
+        let fromRemaining: Int
+        /// 上乗せ前に進んだ人数。
+        let base: Int
+    }
     @State private var isShowingVoicePermission = false
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
     private var isBusy: Bool {
-        surge != nil || activeMission != nil || store.pendingEvent != nil
+        surge != nil || activeMission != nil || store.pendingEvent != nil || lottery != nil
     }
 
     var body: some View {
@@ -77,8 +88,15 @@ struct QueueView: View {
                     // 実際に減った人数で演出する。倍率がかかっていても必ず一致する。
                     let skipped = before - store.remaining
                     if skipped > 0 {
-                        surgeForward(people: skipped, from: before)
+                        startLottery(fromRemaining: before, base: skipped)
                     }
+                }
+                .transition(.opacity)
+            }
+
+            if let lottery, let pending = pendingSurge {
+                LotteryView(lottery: lottery, basePeople: pending.base) { result in
+                    finishLottery(result, pending: pending)
                 }
                 .transition(.opacity)
             }
@@ -727,6 +745,33 @@ struct QueueView: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         sound.play(.clear)
         Task { await rescheduleNotifications() }
+    }
+
+    // MARK: - 抽選
+
+    /// ミッションの前進を、抽選が決まるまで預かる。
+    ///
+    /// 内部の人数はもう動いているが、画面はこの演出が終わってから追いつく。
+    /// 途中でアプリを閉じても、稼いだぶんが消えることはない。
+    private func startLottery(fromRemaining: Int, base: Int) {
+        pendingSurge = PendingSurge(fromRemaining: fromRemaining, base: base)
+        lottery = Lottery.draw(
+            seed: Int(Date().timeIntervalSince1970 * 1_000) &+ base &* 31 &+ store.combo
+        )
+    }
+
+    private func finishLottery(_ result: Lottery.Result, pending: PendingSurge) {
+        lottery = nil
+        pendingSurge = nil
+
+        // 上乗せぶんをここで足す。抜けた人数は必ず画面に出した数と一致する。
+        let extra = pending.base * (result.multiplier - 1)
+        if extra > 0 { store.skipAhead(by: extra) }
+
+        let total = pending.fromRemaining - store.remaining
+        if total > 0 {
+            surgeForward(people: total, from: pending.fromRemaining)
+        }
     }
 
     /// 段が上がったことを、音と振動と文字で一度に伝える。

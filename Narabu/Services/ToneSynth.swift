@@ -33,6 +33,8 @@ enum ToneSynth {
         case triangle
         /// ざらついた音。失敗や衝撃に使う。
         case noise
+        /// 角の立った電子音。抽選の煽りに使う。
+        case square
     }
 
     /// 音の列をバッファに焼く。
@@ -81,6 +83,10 @@ enum ToneSynth {
         case .noise:
             return (QueueEngine.unitRandom(seed, salt: 0x5EED) * 2 - 1) * 0.6
                 + sin(phase) * 0.4
+        case .square:
+            // 奇数倍音だけを足していくと、角の立った矩形波に近づく。
+            // そのまま切り替えるとノイズが乗るので、足し合わせで作る。
+            return (sin(phase) + sin(phase * 3) / 3 + sin(phase * 5) / 5 + sin(phase * 7) / 7) * 0.7
         }
     }
 

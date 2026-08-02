@@ -821,6 +821,63 @@ final class QueueEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - 抽選
+
+    /// 出る割合の合計が100%になること。
+    func testLotteryRatesAddUpToOneHundredPercent() {
+        let total = Lottery.Result.allCases.reduce(0) { $0 + $1.rate }
+        XCTAssertEqual(total, 1.0, accuracy: 0.0001, "抽選の割合の合計が100%になっていない")
+    }
+
+    /// 設定した割合どおりに出ること。
+    func testLotteryDrawsMatchTheirRates() {
+        var counts: [Lottery.Result: Int] = [:]
+        let trials = 40_000
+
+        for seed in 0..<trials {
+            counts[Lottery.draw(seed: seed).result, default: 0] += 1
+        }
+
+        for result in Lottery.Result.allCases {
+            let observed = Double(counts[result] ?? 0) / Double(trials)
+            XCTAssertEqual(observed, result.rate, accuracy: 0.015,
+                           "\(result)の出る割合が設定から離れすぎている")
+        }
+    }
+
+    /// 上乗せで人数が減ることは絶対にないこと。
+    ///
+    /// 外れても腕で稼いだぶんは必ずもらえる。そうでないと、
+    /// 待たされること自体が罰になって回す気がなくなる。
+    func testLotteryNeverTakesAwayWhatWasEarned() {
+        for result in Lottery.Result.allCases {
+            XCTAssertGreaterThanOrEqual(result.multiplier, 1, "\(result)で人数が減っている")
+        }
+        XCTAssertEqual(Lottery.Result.miss.multiplier, 1)
+    }
+
+    /// 引っぱられたのに外れる回が、ちゃんとあること。
+    ///
+    /// **煽り＝当たりになってしまうと、煽られる意味がなくなる。**
+    /// 揃うまで分からないからこそ、そろった瞬間に価値が出る。
+    func testLotterySometimesTeasesAndStillMisses() {
+        let trials = 20_000
+        var teasedMisses = 0
+        var reaches = 0
+
+        for seed in 0..<trials {
+            let lottery = Lottery.draw(seed: seed)
+            if lottery.showsReach { reaches += 1 }
+            if lottery.teases { teasedMisses += 1 }
+        }
+
+        XCTAssertGreaterThan(teasedMisses, 0, "煽って外す回が一度もない")
+
+        // 煽られた回のうち、半分以上は外れであってほしい。
+        let share = Double(teasedMisses) / Double(reaches)
+        XCTAssertGreaterThan(share, 0.4, "煽りがほぼ当たり確定になっている")
+    }
+
     // MARK: - 連続成功の倍率
 
     /// 連続を積むほど、一度に抜ける人数が跳ね上がること。

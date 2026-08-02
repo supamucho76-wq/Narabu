@@ -11,6 +11,10 @@ enum SoundEffect: String, CaseIterable {
     case gacha
     case rare
     case clear
+    /// 抽選を煽るチャイム。畳みかけて鳴らすと「チャンチャンチャン」になる。
+    case chance
+    /// 揃った瞬間のファンファーレ。
+    case jackpot
 }
 
 /// 音を鳴らす係。
@@ -257,6 +261,41 @@ final class SoundPlayer {
                 },
                 duration: 1.0
             )
+
+        case .chance:
+            // 「チャン」の一打ち。畳みかけて鳴らすとあの音になる。
+            // 5度を重ねると、単音より telegraph めいた鳴りかたになる。
+            return ToneSynth.render(
+                notes: [
+                    .init(frequency: ToneSynth.pitch(semitonesFromA4: 12), start: 0,
+                          duration: 0.11, volume: 0.42, timbre: .square),
+                    .init(frequency: ToneSynth.pitch(semitonesFromA4: 19), start: 0,
+                          duration: 0.11, volume: 0.26, timbre: .square)
+                ],
+                duration: 0.14
+            )
+
+        case .jackpot:
+            // 揃った瞬間。駆け上がってから和音で押し切る。
+            var notes: [ToneSynth.Note] = (0..<12).map { step in
+                .init(
+                    frequency: ToneSynth.pitch(semitonesFromA4: -12 + step * 3),
+                    start: Double(step) * 0.045,
+                    duration: 0.12,
+                    volume: 0.4,
+                    timbre: .square
+                )
+            }
+            for (index, semitone) in [0, 4, 7, 12, 16].enumerated() {
+                notes.append(.init(
+                    frequency: ToneSynth.pitch(semitonesFromA4: semitone),
+                    start: 0.55 + Double(index) * 0.03,
+                    duration: 0.7,
+                    volume: 0.38,
+                    timbre: .triangle
+                ))
+            }
+            return ToneSynth.render(notes: notes, duration: 1.4)
         }
     }
 
