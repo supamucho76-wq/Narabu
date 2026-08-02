@@ -950,6 +950,69 @@ final class QueueEngineTests: XCTestCase {
         XCTAssertGreaterThan(share, 0.4, "煽りがほぼ当たり確定になっている")
     }
 
+    // MARK: - 連続成功でリールを埋める
+
+    /// 続けて成功するほど、7が先に埋まっていくこと。
+    ///
+    /// 抽選が運だけに見えると、当たっても「たまたま」で終わる。
+    /// 自分の腕で777に近づけた、という筋道を残す。
+    func testStreakLocksReelsOntoSeven() {
+        XCTAssertEqual(ReelLock.count(forStreak: 0), 0)
+        XCTAssertEqual(ReelLock.count(forStreak: 4), 0)
+        XCTAssertEqual(ReelLock.count(forStreak: 5), 1)
+        XCTAssertEqual(ReelLock.count(forStreak: 7), 1)
+        XCTAssertEqual(ReelLock.count(forStreak: 8), 2)
+        XCTAssertEqual(ReelLock.count(forStreak: 12), 3)
+        XCTAssertEqual(ReelLock.count(forStreak: 40), 3)
+
+        XCTAssertEqual(ReelLock.remaining(forStreak: 0), 5)
+        XCTAssertEqual(ReelLock.remaining(forStreak: 6), 2)
+        XCTAssertNil(ReelLock.remaining(forStreak: 12), "埋めきったのに先があることになっている")
+    }
+
+    /// 3つ埋めきったら、回すまでもなく必ず当たること。
+    func testFullyLockedReelsAlwaysWin() {
+        for seed in 0..<300 {
+            let lottery = Lottery.draw(seed: seed, streak: 12)
+            XCTAssertEqual(lottery.result, .jackpot, "777を作りきったのに外れた")
+            XCTAssertFalse(lottery.teases, "確定しているのに煽っている")
+        }
+    }
+
+    /// 埋まっているほど当たりやすくなること。
+    func testLockedReelsRaiseTheOddsStepByStep() {
+        func winRate(streak: Int) -> Double {
+            let wins = (0..<20_000).filter {
+                Lottery.draw(seed: $0, streak: streak).result != .miss
+            }.count
+            return Double(wins) / 20_000
+        }
+
+        let none = winRate(streak: 0)
+        let one = winRate(streak: 5)
+        let two = winRate(streak: 8)
+
+        XCTAssertGreaterThan(one, none, "1つ埋めても当たりやすくなっていない")
+        XCTAssertGreaterThan(two, one, "2つ埋めても当たりやすくなっていない")
+    }
+
+    // MARK: - 危ない橋
+
+    /// 警戒が高いほど、見返りも大きくなること。
+    ///
+    /// 上げたままにする理由がないと、警戒はただ避けるだけの数字になる。
+    func testHigherAlertnessPaysBetter() {
+        func multiplier(at alertness: Double) -> Double {
+            1 + (alertness / Alertness.maximum) * 0.8
+        }
+
+        XCTAssertEqual(multiplier(at: 0), 1.0, accuracy: 0.001)
+        XCTAssertGreaterThan(multiplier(at: 50), multiplier(at: 0))
+        XCTAssertGreaterThan(multiplier(at: Alertness.maximum), multiplier(at: 50))
+        XCTAssertLessThanOrEqual(multiplier(at: Alertness.maximum), 2.0,
+                                 "危険手当が効きすぎて、丁寧に進む意味がなくなる")
+    }
+
     // MARK: - 連続成功の倍率
 
     /// 連続を積むほど、一度に抜ける人数が跳ね上がること。

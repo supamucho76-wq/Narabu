@@ -41,7 +41,8 @@ struct QueueView: View {
     @AppStorage("hasSeenIntro") private var hasSeenIntro = false
 
     private var isBusy: Bool {
-        surge != nil || activeMission != nil || store.pendingEvent != nil || lottery != nil
+        surge != nil || activeMission != nil || store.pendingEvent != nil
+            || lottery != nil || store.isBeingChased
     }
 
     var body: some View {
@@ -92,6 +93,20 @@ struct QueueView: View {
                     if skipped > 0 {
                         startLottery(fromRemaining: before, base: skipped)
                     }
+                }
+                .transition(.opacity)
+            }
+
+            if store.isBeingChased {
+                ChaseView(penalty: max(3, store.stage.queueLength / 20)) { escaped in
+                    let pushedBack = store.resolveChase(escaped: escaped)
+                    show(.init(
+                        grade: escaped ? .good : .backfire,
+                        message: escaped
+                            ? "人混みに紛れて振り切った。何も失わずに済んだ。"
+                            : "警備員に腕をつかまれた。\(pushedBack)人ぶん後ろへ戻された。",
+                        advance: escaped ? 0 : -pushedBack
+                    ))
                 }
                 .transition(.opacity)
             }
@@ -223,10 +238,15 @@ struct QueueView: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(warning.color)
                 }
+                if store.riskMultiplier >= 1.25 {
+                    riskBadge
+                }
                 if store.combo >= 3 {
                     comboBadge
                 }
             }
+
+            zoneBar
         }
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.65), radius: 5, y: 1)
@@ -387,6 +407,64 @@ struct QueueView: View {
         }
     }
 
+    /// 危ない橋を渡っているぶんの見返り。
+    ///
+    /// 警戒は避けるだけの数字ではなく、**上げたままにする理由**でもある。
+    private var riskBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "flame.fill")
+            Text("危険手当 ×\(store.riskMultiplier, specifier: "%.1f")")
+        }
+        .font(.system(size: 10, weight: .black))
+        .foregroundStyle(store.alertLevel.color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(.black.opacity(0.45))
+        .clipShape(Capsule())
+    }
+
+    /// 集中が満タンになったときだけ出る、ゾーンへの入口。
+    ///
+    /// 溜めきったら押せるものがないと、集中はただの制限で終わる。
+    @ViewBuilder
+    private var zoneBar: some View {
+        if store.isInZone {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.horizontal.fill")
+                Text("ゾーン　抜ける人数が2倍")
+                Spacer()
+                Text("\(Int(store.zoneRemainingRatio * QueueStore.zoneDuration) + 1)秒")
+                    .monospacedDigit()
+            }
+            .font(.system(size: 11, weight: .black))
+            .foregroundStyle(Color(red: 0.16, green: 0.14, blue: 0.20))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color(red: 0.62, green: 0.90, blue: 1.0))
+            .clipShape(Capsule())
+            .padding(.top, 4)
+        } else if store.canEnterZone {
+            Button {
+                guard store.enterZoneIfReady() else { return }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                sound.play(.rare)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                    Text("集中が満タン　ゾーンに入る")
+                }
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(Color(red: 0.16, green: 0.14, blue: 0.20))
+                .frame(maxWidth: .infinity, minHeight: AppTheme.minimumTapHeight)
+                .background(Color(red: 0.62, green: 0.90, blue: 1.0))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(GameButtonStyle())
+            .disabled(isBusy)
+            .padding(.top, 4)
+        }
+    }
+
     // MARK: - 3. コンボ
 
     /// 段が上がった瞬間に、画面の真ん中で知らせる。
@@ -434,6 +512,17 @@ struct QueueView: View {
                 Text("あと\(remaining)")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white.opacity(0.6))
+            }
+
+            // 7がいくつ埋まっているか。自分で777を作りにいく道筋を見せる。
+            if store.lockedReels > 0 {
+                HStack(spacing: 1) {
+                    ForEach(0..<store.lockedReels, id: \.self) { _ in
+                        Text("7")
+                            .font(.system(size: 11, weight: .black))
+                    }
+                }
+                .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.30))
             }
         }
         .font(.system(size: 11, weight: .black))
@@ -850,7 +939,9 @@ struct QueueView: View {
     private func startLottery(fromRemaining: Int, base: Int) {
         pendingSurge = PendingSurge(fromRemaining: fromRemaining, base: base)
         lottery = Lottery.draw(
-            seed: Int(Date().timeIntervalSince1970 * 1_000) &+ base &* 31 &+ store.combo
+            seed: Int(Date().timeIntervalSince1970 * 1_000) &+ base &* 31 &+ store.combo,
+            // 続けて成功しているぶんだけ、7が先に埋まった状態で回る。
+            streak: store.combo
         )
     }
 

@@ -335,6 +335,62 @@ final class QueueStore {
         return next.requiredCombo - combo
     }
 
+    /// いま7が何個埋まっているか。連続成功で増える。
+    var lockedReels: Int { ReelLock.count(forStreak: combo) }
+
+    /// 次の7が埋まるまで、あと何回続ければいいか。
+    var reelsToNextLock: Int? { ReelLock.remaining(forStreak: combo) }
+
+    // MARK: - ゾーン
+
+    /// 集中が満タンになると入る、短い無双状態。
+    ///
+    /// ゲージを溜める目的がないと、集中はただの制限にしかならない。
+    /// **溜めきったら強くなる**という出口を作って、狙って溜める理由にする。
+    private(set) var zoneStartedAt: Date?
+
+    /// ゾーンが続く長さ。
+    static let zoneDuration: TimeInterval = 8
+
+    var isInZone: Bool {
+        guard let zoneStartedAt else { return false }
+        return now.timeIntervalSince(zoneStartedAt) < Self.zoneDuration
+    }
+
+    /// ゾーンの残り時間の割合。1から0へ落ちていく。
+    var zoneRemainingRatio: Double {
+        guard let zoneStartedAt else { return 0 }
+        let elapsed = now.timeIntervalSince(zoneStartedAt)
+        return max(0, 1 - elapsed / Self.zoneDuration)
+    }
+
+    /// いまゾーンに入れるか。
+    var canEnterZone: Bool { !isInZone && focus >= FocusGauge.maximum - 0.5 }
+
+    /// 集中が満タンになったら、ゾーンへ入れる。
+    ///
+    /// 入ると集中を使い切るので、続けて入り直すことはできない。
+    @discardableResult
+    func enterZoneIfReady() -> Bool {
+        guard !isInZone, focus >= FocusGauge.maximum - 0.5 else { return false }
+        zoneStartedAt = now
+        state.focusAnchor = 0
+        state.focusAnchorDate = now
+        save()
+        return true
+    }
+
+    // MARK: - 危ない橋を渡る
+
+    /// 警戒が高いほど上がる報酬の倍率。
+    ///
+    /// **警戒を上げっぱなしにする理由がないと、ただ避けるだけの数字になる。**
+    /// 危ない橋を渡るほど見返りも大きくして、
+    /// 「安全に少しずつ」と「危険を承知で一気に」のどちらも選べるようにする。
+    var riskMultiplier: Double {
+        1 + (alertness / Alertness.maximum) * 0.8
+    }
+
     /// 自力で進んだぶんに、連続成功の倍率をかける。
     ///
     /// 下がるときにはかけない。連続を切らした罰まで重くすると、
@@ -342,7 +398,16 @@ final class QueueStore {
     /// ガチャの乗り物は元から大きいので、ここは通さない。
     private func boosted(_ advance: Int) -> Int {
         guard advance > 0 else { return advance }
-        return max(advance, Int((Double(advance) * comboTier.multiplier).rounded()))
+        return scaled(advance, tier: comboTier)
+    }
+
+    /// 前進にかかる倍率をすべて掛け合わせる。
+    ///
+    /// 連続成功・ゾーン・危ない橋の3つが、同じ数の上に乗る。
+    /// 計算をここ1か所に閉じて、画面に出す数と実際に進む数を必ず一致させる。
+    private func scaled(_ advance: Int, tier: ComboTier) -> Int {
+        let multiplier = tier.multiplier * (isInZone ? 2 : 1) * riskMultiplier
+        return max(advance, Int((Double(advance) * multiplier).rounded()))
     }
 
     /// このミッションに成功したら、実際に何人抜けるか。
@@ -350,8 +415,7 @@ final class QueueStore {
     /// 成功すれば連続が1つ伸びるので、**伸びたあとの段**で数える。
     /// 画面に出す数と、実際に進む数を必ず一致させるため。
     func projectedReward(for mission: Mission) -> Int {
-        let tier = ComboTier.of(combo + 1)
-        return max(mission.reward, Int((Double(mission.reward) * tier.multiplier).rounded()))
+        scaled(mission.reward, tier: ComboTier.of(combo + 1))
     }
 
     func interactWithPersonAhead(_ action: QueueAction) -> ActionOutcome {
@@ -451,6 +515,43 @@ final class QueueStore {
     private func changeAlert(by delta: Double) {
         state.alertAnchor = min(Alertness.maximum, max(0, alertness + delta))
         state.alertAnchorDate = now
+
+        // 振り切れたら、そこで終わりにはしない。追われる。
+        if state.alertAnchor >= Alertness.maximum, !isBeingChased {
+            isBeingChased = true
+        }
+    }
+
+    /// 警戒が振り切れて、警備員に追われている状態。
+    ///
+    /// **振り切れた時点でゲームオーバーにはしない。** 逃げ切れば戻れる。
+    /// 危ない橋を渡る遊びかたを潰さないための逃げ道。
+    private(set) var isBeingChased = false
+
+    /// 追跡から抜ける。
+    ///
+    /// - Returns: 失敗して後ろへ戻された人数。逃げ切っていれば0。
+    @discardableResult
+    func resolveChase(escaped: Bool) -> Int {
+        isBeingChased = false
+
+        if escaped {
+            // 息を整えたぶんだけ落ち着く。連続は切らさない。
+            state.alertAnchor = Alertness.maximum * 0.3
+            state.alertAnchorDate = now
+            save()
+            return 0
+        }
+
+        // 捕まった。連れ戻されて、積み上げも切れる。
+        updateCombo(0)
+        let pushedBack = max(3, stage.queueLength / 20)
+        state.alertAnchor = Alertness.maximum * 0.5
+        state.alertAnchorDate = now
+        state.totalCutIns += pushedBack
+        moveAnchor(to: max(0, progress - pushedBack))
+        save()
+        return pushedBack
     }
 
     // MARK: - 声で押し通す

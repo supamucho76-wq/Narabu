@@ -34,12 +34,19 @@ struct LotteryView: View {
     /// 揃える出目。左と中は必ずこれになる。
     private var winningFace: Int { 6 }
 
+    private var headline: String {
+        if lottery.lockedReels >= 3 { return "７７７確定" }
+        if phase == .reach { return "リーチ！" }
+        if lottery.lockedReels > 0 { return "\(lottery.lockedReels)つ確定ずみ" }
+        return "抽選中"
+    }
+
     var body: some View {
         ZStack {
             background
 
             VStack(spacing: 26) {
-                Text(phase == .reach ? "リーチ！" : "抽選中")
+                Text(headline)
                     .font(.system(size: 15, weight: .black))
                     .tracking(6)
                     .foregroundStyle(.white.opacity(phase == .spinning ? 0.55 : 1))
@@ -119,24 +126,35 @@ struct LotteryView: View {
 
     private func reel(index: Int, at t: Double) -> some View {
         let isStopped = index < stoppedReels
+        let isLocked = index < lottery.lockedReels
         let face = isStopped ? settledFace(index) : spinningFace(index: index, at: t)
         // 最後の1枚は、煽りのあいだだけゆっくり回る。
         let isSlow = index == 2 && phase == .reach
+        // 自分で埋めたリールは、結果の色ではなく確定の色で光らせる。
+        let lockColor = Color(red: 1.0, green: 0.82, blue: 0.30)
+        let tint = isLocked ? lockColor : lottery.result.color
 
-        return Text("\(face + 1)")
-            .font(.system(size: 60, weight: .black, design: .rounded))
-            .foregroundStyle(isStopped ? lottery.result.color : .white)
-            .frame(width: 88, height: 116)
-            .background(.white.opacity(isStopped ? 0.14 : 0.07))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(
-                        isStopped ? lottery.result.color.opacity(0.9) : .white.opacity(0.2),
-                        lineWidth: isStopped ? 3 : 1
-                    )
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .scaleEffect(isSlow ? 1 + sin(t * 6) * 0.05 : 1)
+        return VStack(spacing: 4) {
+            Text("\(face + 1)")
+                .font(.system(size: 56, weight: .black, design: .rounded))
+                .foregroundStyle(isStopped ? tint : .white)
+                .frame(width: 88, height: 108)
+                .background(.white.opacity(isStopped ? 0.14 : 0.07))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            isStopped ? tint.opacity(0.9) : .white.opacity(0.2),
+                            lineWidth: isStopped ? 3 : 1
+                        )
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // 連続成功で埋めたことが分かるようにしておく。
+            Text(isLocked ? "確定" : " ")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(lockColor)
+        }
+        .scaleEffect(isSlow ? 1 + sin(t * 6) * 0.05 : 1)
     }
 
     /// 回っているあいだの見かけの出目。
@@ -200,14 +218,26 @@ struct LotteryView: View {
 
     private func run() async {
         startedAt = Date()
+        // 連続成功で先に埋まっているぶんは、回さずに最初から7が出ている。
+        stoppedReels = min(3, lottery.lockedReels)
+
+        // 3つとも自分で埋めたなら、回すまでもなく揃っている。
+        guard stoppedReels < 3 else {
+            withAnimation(.easeIn(duration: 0.2)) { phase = .reach }
+            await tease()
+            settle()
+            try? await Task.sleep(for: .seconds(1.3))
+            finish()
+            return
+        }
 
         // 揃わない回は手早く終える。毎回同じだけ待たされると、ただの邪魔になる。
         let isQuick = !lottery.showsReach
 
-        try? await Task.sleep(for: .seconds(isQuick ? 0.40 : 0.5))
-        stopReel()
-        try? await Task.sleep(for: .seconds(isQuick ? 0.16 : 0.28))
-        stopReel()
+        while stoppedReels < 2 {
+            try? await Task.sleep(for: .seconds(isQuick ? 0.34 : 0.46))
+            stopReel()
+        }
 
         if lottery.showsReach {
             withAnimation(.easeIn(duration: 0.25)) { phase = .reach }
